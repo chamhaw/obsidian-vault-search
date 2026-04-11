@@ -31,7 +31,7 @@ export async function askVault(question: string, notes: NoteEntry[], embedding: 
   }));
   const context = contextParts.join("\n\n---\n\n");
   const messages: Message[] = [
-    { role: "system", content: "你是知识库助手。严格基于提供的笔记内容回答问题，引用来源用 [序号] 格式。如果笔记中没有相关信息，请直接说明。" },
+    { role: "system", content: "你是知识库助手。你的唯一信息来源是用户提供的笔记内容，禁止使用任何外部知识或自行推断补充。回答时严格引用笔记原文，用 [序号] 标注来源。如果提供的笔记中没有足够信息回答问题，必须明确回复：知识库中未检索到相关内容，不得编造或推测。" },
     { role: "user", content: `知识库内容：\n\n${context}\n\n问题：${question}` },
   ];
   await llm.chat(messages, onChunk);
