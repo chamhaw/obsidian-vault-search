@@ -33,19 +33,55 @@ export class OpenAICompatibleLLMProvider implements LLMProvider {
   constructor(private baseUrl: string, private model: string, private apiKey: string) {}
 
   async chat(messages: Message[], onChunk: (c: string) => void): Promise<void> {
-    const { requestUrl } = require("obsidian");
-    const resp = await requestUrl({
-      url: `${this.baseUrl}/chat/completions`,
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ model: this.model, messages, stream: false }),
-      throw: false,
+    return new Promise((resolve, reject) => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const https = require("https") as typeof import("https");
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const http = require("http") as typeof import("http");
+
+      const url = new URL(`${this.baseUrl}/chat/completions`);
+      const body = JSON.stringify({ model: this.model, messages, stream: true });
+
+      const options = {
+        hostname: url.hostname,
+        port: url.port || (url.protocol === "https:" ? 443 : 80),
+        path: url.pathname + url.search,
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      };
+
+      const transport = url.protocol === "https:" ? https : http;
+      const req = transport.request(options, (res) => {
+        if (res.statusCode && res.statusCode >= 400) {
+          let errBody = "";
+          res.on("data", (d: Buffer) => errBody += d.toString());
+          res.on("end", () => reject(new Error(`LLM API ${res.statusCode}: ${errBody}`)));
+          return;
+        }
+        let buf = "";
+        res.on("data", (chunk: Buffer) => {
+          buf += chunk.toString();
+          const lines = buf.split("\n");
+          buf = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
+            try {
+              const d = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content;
+              if (d) onChunk(d);
+            } catch {}
+          }
+        });
+        res.on("end", resolve);
+        res.on("error", reject);
+      });
+
+      req.on("error", reject);
+      req.write(body);
+      req.end();
     });
-    if (resp.status >= 400) throw new Error(`LLM API ${resp.status}: ${resp.text}`);
-    const text = resp.json?.choices?.[0]?.message?.content ?? "";
-    onChunk(text);
   }
 }
