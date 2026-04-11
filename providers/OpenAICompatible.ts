@@ -31,21 +31,21 @@ export class HttpRerankProvider implements RerankProvider {
 
 export class OpenAICompatibleLLMProvider implements LLMProvider {
   constructor(private baseUrl: string, private model: string, private apiKey: string) {}
+
   async chat(messages: Message[], onChunk: (c: string) => void): Promise<void> {
-    const r = await fetch(`${this.baseUrl}/chat/completions`, {
+    const { requestUrl } = require("obsidian");
+    const resp = await requestUrl({
+      url: `${this.baseUrl}/chat/completions`,
       method: "POST",
-      headers: { "Authorization": `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: this.model, messages, stream: true }),
+      headers: {
+        "Authorization": `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model: this.model, messages, stream: false }),
+      throw: false,
     });
-    if (!r.ok) throw new Error(`LLM API ${r.status}`);
-    const reader = r.body!.getReader(), dec = new TextDecoder();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      for (const line of dec.decode(value).split("\n")) {
-        if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
-        try { const d = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content; if (d) onChunk(d); } catch {}
-      }
-    }
+    if (resp.status >= 400) throw new Error(`LLM API ${resp.status}: ${resp.text}`);
+    const text = resp.json?.choices?.[0]?.message?.content ?? "";
+    onChunk(text);
   }
 }
