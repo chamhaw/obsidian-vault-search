@@ -1,6 +1,6 @@
 {
   "id": "smart-vault-search",
-  "name": "Vault Search",
+  "name": "Smart Vault Search",
   "version": "1.0.0",
   "minAppVersion": "1.4.0",
   "description": "基于 BGE 的知识库语义搜索、问答与关联发现",
