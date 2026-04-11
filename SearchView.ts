@@ -81,7 +81,8 @@ export class VaultSearchView extends ItemView {
     ansEl.setText("思考中...");
     let full = "";
     try {
-      const result = await askVault(question, index.notes, this.plugin.providers.embedding, this.plugin.providers.reranker, this.plugin.providers.llm, { recallTopK: this.plugin.settings.rerankerRecallTopK, finalTopK: this.plugin.settings.rerankerFinalTopK }, chunk => { full += chunk; ansEl.setText(full); });
+      const readFile = (path: string) => this.app.vault.adapter.read(path);
+      const result = await askVault(question, index.notes, this.plugin.providers.embedding, this.plugin.providers.reranker, this.plugin.providers.llm, { recallTopK: this.plugin.settings.rerankerRecallTopK, finalTopK: this.plugin.settings.rerankerFinalTopK }, chunk => { full += chunk; ansEl.setText(full); }, readFile);
       if (result.sources.length) {
         const src = el.createDiv({ cls: "vs-sources" });
         src.createEl("div", { text: "参考来源：", cls: "vs-src-label" });
