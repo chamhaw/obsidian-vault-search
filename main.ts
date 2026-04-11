@@ -32,6 +32,14 @@ export default class VaultSearchPlugin extends Plugin {
     workspace.revealLeaf(leaf);
   }
 
+  async runIndex(mode: "full" | "incremental", onProgress: (cur: number, total: number) => void) {
+    const { Indexer } = await import("./Indexer");
+    const indexer = new Indexer(this.app, this.providers.embedding, this.settings.embeddingModel);
+    if (mode === "full") await indexer.buildFull(onProgress);
+    else await indexer.buildIncremental(onProgress);
+    await this.indexLoader.load();
+  }
+
   rebuildProviders() {
     const config: PluginConfig = {
       embedding: { base_url: this.settings.embeddingBaseUrl, model: this.settings.embeddingModel, api_key: this.settings.embeddingApiKey },

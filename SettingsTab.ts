@@ -39,5 +39,47 @@ export class VaultSearchSettingTab extends PluginSettingTab {
     addText("LLM Base URL", () => this.plugin.settings.llmBaseUrl, v => this.plugin.settings.llmBaseUrl = v);
     addText("LLM 模型", () => this.plugin.settings.llmModel, v => this.plugin.settings.llmModel = v);
     addText("LLM API Key", () => this.plugin.settings.llmApiKey, v => this.plugin.settings.llmApiKey = v, true);
+
+    // 索引管理
+    containerEl.createEl("h2", { text: "索引管理" });
+    containerEl.createEl("p", { text: `索引位置：vault根目录/.search_index/index.json`, cls: "setting-item-description" });
+
+    let progressEl: HTMLElement | null = null;
+
+    new Setting(containerEl)
+      .setName("全量构建索引")
+      .setDesc("遍历所有笔记重新生成向量索引（首次使用或模型变更后执行）")
+      .addButton(btn => btn.setButtonText("Build Index").setCta().onClick(async () => {
+        btn.setDisabled(true).setButtonText("构建中...");
+        if (!progressEl) {
+          progressEl = containerEl.createEl("p", { cls: "setting-item-description" });
+        }
+        try {
+          await (this.plugin as any).runIndex("full", (cur: number, total: number) => {
+            if (progressEl) progressEl.setText(`进度：${cur} / ${total}`);
+          });
+        } finally {
+          btn.setDisabled(false).setButtonText("Build Index");
+          if (progressEl) progressEl.setText("完成");
+        }
+      }));
+
+    new Setting(containerEl)
+      .setName("增量更新索引")
+      .setDesc("只更新有变更的笔记，速度更快")
+      .addButton(btn => btn.setButtonText("Update Index").onClick(async () => {
+        btn.setDisabled(true).setButtonText("更新中...");
+        if (!progressEl) {
+          progressEl = containerEl.createEl("p", { cls: "setting-item-description" });
+        }
+        try {
+          await (this.plugin as any).runIndex("incremental", (cur: number, total: number) => {
+            if (progressEl) progressEl.setText(`进度：${cur} / ${total}`);
+          });
+        } finally {
+          btn.setDisabled(false).setButtonText("Update Index");
+          if (progressEl) progressEl.setText("完成");
+        }
+      }));
   }
 }
