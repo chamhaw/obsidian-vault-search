@@ -7,7 +7,7 @@ export function buildProviders(config: PluginConfig): { embedding: EmbeddingProv
   const embedding = new OpenAICompatibleEmbeddingProvider(config.embedding.base_url, config.embedding.model, config.embedding.api_key);
   const reranker = config.reranker.enabled ? new HttpRerankProvider(config.reranker.base_url, config.reranker.model, config.reranker.api_key) : null;
   const llm = config.llm.provider === "anthropic"
-    ? new AnthropicProvider(config.llm.api_key, config.llm.model)
+    ? new AnthropicProvider(config.llm.api_key, config.llm.model, config.llm.base_url)
     : new OpenAICompatibleLLMProvider(config.llm.base_url, config.llm.model, config.llm.api_key);
   return { embedding, reranker, llm };
 }

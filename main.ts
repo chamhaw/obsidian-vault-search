@@ -1,4 +1,4 @@
-import { Plugin } from "obsidian";
+import { Plugin, MarkdownView } from "obsidian";
 import { VaultSearchSettingTab, VaultSearchSettings, DEFAULT_SETTINGS } from "./SettingsTab";
 import { VaultSearchView, VIEW_TYPE } from "./SearchView";
 import { IndexLoader } from "./IndexLoader";
@@ -9,6 +9,7 @@ export default class VaultSearchPlugin extends Plugin {
   settings: VaultSearchSettings = DEFAULT_SETTINGS;
   indexLoader!: IndexLoader;
   providers!: { embedding: EmbeddingProvider; reranker: RerankProvider | null; llm: LLMProvider };
+  lastMarkdownView: MarkdownView | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -19,6 +20,9 @@ export default class VaultSearchPlugin extends Plugin {
     this.addRibbonIcon("search", "Vault Search", () => this.activateView());
     this.addCommand({ id: "open-vault-search", name: "打开 Vault Search", callback: () => this.activateView() });
     this.addSettingTab(new VaultSearchSettingTab(this.app, this));
+    this.registerEvent(this.app.workspace.on("active-leaf-change", leaf => {
+      if (leaf?.view instanceof MarkdownView) this.lastMarkdownView = leaf.view;
+    }));
     await this.indexLoader.load();
     this.indexLoader.watchAndReload(() => {});
   }

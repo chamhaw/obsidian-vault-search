@@ -1,9 +1,9 @@
 import { LLMProvider, Message } from "./types";
 
 export class AnthropicProvider implements LLMProvider {
-  constructor(private apiKey: string, private model: string) {}
+  constructor(private apiKey: string, private model: string, private baseUrl = "https://api.anthropic.com") {}
   async chat(messages: Message[], onChunk: (c: string) => void): Promise<void> {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
+    const r = await fetch(`${this.baseUrl}/v1/messages`, {
       method: "POST",
       headers: { "x-api-key": this.apiKey, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
       body: JSON.stringify({

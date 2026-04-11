@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, TFile, MarkdownView } from "obsidian";
+import { ItemView, WorkspaceLeaf, TFile, MarkdownView, Notice } from "obsidian";
 import type VaultSearchPlugin from "./main";
 import { semanticSearch, askVault } from "./pipeline";
 
@@ -120,7 +120,18 @@ export class VaultSearchView extends ItemView {
   }
 
   private insertWikilink(title: string) {
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (view) view.editor.replaceSelection(`[[${title}]]`);
+    const view = this.plugin.lastMarkdownView;
+    if (view?.editor) {
+      const content = view.editor.getValue();
+      if (content.includes(`[[${title}]]`)) {
+        new Notice(`[[${title}]] 已存在`);
+        return;
+      }
+      view.editor.replaceSelection(`[[${title}]]`);
+    } else {
+      // 回退：复制到剪贴板
+      navigator.clipboard.writeText(`[[${title}]]`);
+      new Notice(`已复制 [[${title}]] 到剪贴板`);
+    }
   }
 }
