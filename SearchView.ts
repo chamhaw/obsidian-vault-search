@@ -54,9 +54,10 @@ export class VaultSearchView extends ItemView {
       if (!results.length) { el.setText("无结果"); return; }
       results.forEach(r => {
         const item = el.createDiv({ cls: "vs-item" });
-        item.createEl("div", { text: r.note.title, cls: "vs-title" });
-        item.createEl("div", { text: r.note.summary, cls: "vs-summary" });
-        item.createEl("div", { text: `${(r.score*100).toFixed(1)}%`, cls: "vs-score" });
+        const row = item.createDiv({ cls: "vs-title-row" });
+        row.createEl("div", { text: r.note.title, cls: "vs-title" });
+        row.createEl("div", { text: `${(r.score*100).toFixed(1)}%`, cls: "vs-score" });
+        if (r.note.summary) item.createEl("div", { text: r.note.summary, cls: "vs-summary" });
         item.onclick = () => this.openNote(r.note.path);
       });
     } catch(e: any) { el.setText(`错误: ${e.message}`); }
@@ -105,7 +106,7 @@ export class VaultSearchView extends ItemView {
         results.forEach(r => {
           const item = el.createDiv({ cls: "vs-item" });
           item.createEl("div", { text: r.note.title, cls: "vs-title" });
-          item.createEl("div", { text: r.note.summary, cls: "vs-summary" });
+          if (r.note.summary) item.createEl("div", { text: r.note.summary, cls: "vs-summary" });
           const insBtn = item.createEl("button", { text: "插入链接", cls: "vs-ins-btn" });
           insBtn.onclick = e => { e.stopPropagation(); this.insertWikilink(r.note.title); };
           item.onclick = () => this.openNote(r.note.path);

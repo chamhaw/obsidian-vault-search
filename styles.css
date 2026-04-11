@@ -1,0 +1,173 @@
+/* Tabs */
+.vs-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 10px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.vs-tab {
+  padding: 5px 14px;
+  border-radius: 6px 6px 0 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+.vs-tab.active {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  font-weight: 500;
+}
+.vs-tab:hover:not(.active) {
+  background: var(--background-modifier-hover);
+}
+
+/* Body */
+.vs-body {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: calc(100% - 42px);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+/* Input */
+.vs-input, .vs-textarea {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 13px;
+  box-sizing: border-box;
+  resize: none;
+}
+.vs-input:focus, .vs-textarea:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+}
+.vs-textarea {
+  min-height: 72px;
+}
+
+/* Result card */
+.vs-item {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  cursor: pointer;
+  transition: background 0.1s;
+  position: relative;
+}
+.vs-item:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+}
+
+/* Title row */
+.vs-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+.vs-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vs-score {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+  padding: 1px 6px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.vs-summary {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Related note title */
+.vs-rel-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+
+/* Insert link button */
+.vs-ins-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-top: 6px;
+}
+.vs-ins-btn:hover {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+/* Ask tab */
+.vs-btn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: none;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-size: 13px;
+  cursor: pointer;
+  align-self: flex-end;
+}
+.vs-btn:hover { filter: brightness(1.1); }
+
+.vs-answer {
+  flex: 1;
+  overflow-y: auto;
+}
+.vs-ans-text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-normal);
+  white-space: pre-wrap;
+}
+
+/* Sources */
+.vs-sources {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.vs-src-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.vs-src-link {
+  font-size: 12px;
+  color: var(--text-accent);
+  cursor: pointer;
+  padding: 2px 0;
+}
+.vs-src-link:hover { text-decoration: underline; }
