@@ -36,6 +36,7 @@ export class VaultSearchSettingTab extends PluginSettingTab {
     addText("Reranker API Key", () => this.plugin.settings.rerankerApiKey, v => this.plugin.settings.rerankerApiKey = v, true);
     containerEl.createEl("h2", { text: "LLM" });
     new Setting(containerEl).setName("Provider").addDropdown(d => d.addOption("anthropic", "Anthropic Claude").addOption("openai-compatible", "OpenAI Compatible").setValue(this.plugin.settings.llmProvider).onChange(async (v: any) => { this.plugin.settings.llmProvider = v; await this.plugin.saveSettings(); }));
+    addText("LLM Base URL", () => this.plugin.settings.llmBaseUrl, v => this.plugin.settings.llmBaseUrl = v);
     addText("LLM 模型", () => this.plugin.settings.llmModel, v => this.plugin.settings.llmModel = v);
     addText("LLM API Key", () => this.plugin.settings.llmApiKey, v => this.plugin.settings.llmApiKey = v, true);
   }
