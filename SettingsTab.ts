@@ -1,5 +1,6 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, PluginSettingTab, Setting, Modal } from "obsidian";
 import type VaultSearchPlugin from "./main";
+import { t, tFormat } from "./i18n";
 
 export interface VaultSearchSettings {
   embeddingBaseUrl: string; embeddingModel: string; embeddingApiKey: string;
@@ -25,61 +26,112 @@ export class VaultSearchSettingTab extends PluginSettingTab {
         if (password) t.inputEl.type = "password";
         t.setValue(get()).onChange(async v => { set(v); await this.plugin.saveSettings(); });
       });
-    containerEl.createEl("h2", { text: "Embedding" });
-    addText("Base URL", () => this.plugin.settings.embeddingBaseUrl, v => this.plugin.settings.embeddingBaseUrl = v);
-    addText("模型", () => this.plugin.settings.embeddingModel, v => this.plugin.settings.embeddingModel = v);
-    addText("API Key", () => this.plugin.settings.embeddingApiKey, v => this.plugin.settings.embeddingApiKey = v, true);
-    containerEl.createEl("h2", { text: "Reranker" });
-    new Setting(containerEl).setName("启用 Reranker").addToggle(t => t.setValue(this.plugin.settings.rerankerEnabled).onChange(async v => { this.plugin.settings.rerankerEnabled = v; await this.plugin.saveSettings(); }));
-    addText("Reranker Base URL", () => this.plugin.settings.rerankerBaseUrl, v => this.plugin.settings.rerankerBaseUrl = v);
-    addText("Reranker 模型", () => this.plugin.settings.rerankerModel, v => this.plugin.settings.rerankerModel = v);
-    addText("Reranker API Key", () => this.plugin.settings.rerankerApiKey, v => this.plugin.settings.rerankerApiKey = v, true);
-    containerEl.createEl("h2", { text: "LLM" });
-    new Setting(containerEl).setName("Provider").addDropdown(d => d.addOption("anthropic", "Anthropic Claude").addOption("openai-compatible", "OpenAI Compatible").setValue(this.plugin.settings.llmProvider).onChange(async (v: any) => { this.plugin.settings.llmProvider = v; await this.plugin.saveSettings(); }));
-    addText("LLM Base URL", () => this.plugin.settings.llmBaseUrl, v => this.plugin.settings.llmBaseUrl = v);
-    addText("LLM 模型", () => this.plugin.settings.llmModel, v => this.plugin.settings.llmModel = v);
-    addText("LLM API Key", () => this.plugin.settings.llmApiKey, v => this.plugin.settings.llmApiKey = v, true);
+    containerEl.createEl("h2", { text: t("settings.embeddingSection") });
+    addText(t("settings.embeddingBaseUrl"), () => this.plugin.settings.embeddingBaseUrl, v => this.plugin.settings.embeddingBaseUrl = v);
+    addText(t("settings.embeddingModel"), () => this.plugin.settings.embeddingModel, v => this.plugin.settings.embeddingModel = v);
+    addText(t("settings.embeddingApiKey"), () => this.plugin.settings.embeddingApiKey, v => this.plugin.settings.embeddingApiKey = v, true);
+    containerEl.createEl("h2", { text: t("settings.rerankerSection") });
+    new Setting(containerEl).setName(t("settings.rerankerEnabled")).addToggle(t => t.setValue(this.plugin.settings.rerankerEnabled).onChange(async v => { this.plugin.settings.rerankerEnabled = v; await this.plugin.saveSettings(); }));
+    addText(t("settings.rerankerBaseUrl"), () => this.plugin.settings.rerankerBaseUrl, v => this.plugin.settings.rerankerBaseUrl = v);
+    addText(t("settings.rerankerModel"), () => this.plugin.settings.rerankerModel, v => this.plugin.settings.rerankerModel = v);
+    addText(t("settings.rerankerApiKey"), () => this.plugin.settings.rerankerApiKey, v => this.plugin.settings.rerankerApiKey = v, true);
+    containerEl.createEl("h2", { text: t("settings.llmSection") });
+    new Setting(containerEl).setName(t("settings.llmProvider")).addDropdown(d => d.addOption("anthropic", "Anthropic Claude").addOption("openai-compatible", "OpenAI Compatible").setValue(this.plugin.settings.llmProvider).onChange(async (v: any) => { this.plugin.settings.llmProvider = v; await this.plugin.saveSettings(); }));
+    addText(t("settings.llmBaseUrl"), () => this.plugin.settings.llmBaseUrl, v => this.plugin.settings.llmBaseUrl = v);
+    addText(t("settings.llmModel"), () => this.plugin.settings.llmModel, v => this.plugin.settings.llmModel = v);
+    addText(t("settings.llmApiKey"), () => this.plugin.settings.llmApiKey, v => this.plugin.settings.llmApiKey = v, true);
 
     // 索引管理
-    containerEl.createEl("h2", { text: "索引管理" });
-    containerEl.createEl("p", { text: `索引位置：vault根目录/.search_index/index.json`, cls: "setting-item-description" });
+    containerEl.createEl("h2", { text: t("settings.indexSection") });
+    containerEl.createEl("p", { text: t("settings.indexLocation"), cls: "setting-item-description" });
 
     let progressEl: HTMLElement | null = null;
 
     new Setting(containerEl)
-      .setName("全量构建索引")
-      .setDesc("遍历所有笔记重新生成向量索引（首次使用或模型变更后执行）")
-      .addButton(btn => btn.setButtonText("Build Index").setCta().onClick(async () => {
-        btn.setDisabled(true).setButtonText("构建中...");
+      .setName(t("settings.buildIndexName"))
+      .setDesc(t("settings.buildIndexDesc"))
+      .addButton(btn => btn.setButtonText(t("settings.buildIndexBtn")).setCta().onClick(async () => {
+        btn.setDisabled(true).setButtonText(t("settings.buildIndexBuilding"));
         if (!progressEl) {
           progressEl = containerEl.createEl("p", { cls: "setting-item-description" });
         }
         try {
           await (this.plugin as any).runIndex("full", (cur: number, total: number) => {
-            if (progressEl) progressEl.setText(`进度：${cur} / ${total}`);
+            if (progressEl) progressEl.setText(tFormat("settings.progress", cur, total));
           });
         } finally {
-          btn.setDisabled(false).setButtonText("Build Index");
-          if (progressEl) progressEl.setText("完成");
+          btn.setDisabled(false).setButtonText(t("settings.buildIndexBtn"));
+          if (progressEl) progressEl.setText(t("settings.buildIndexDone"));
         }
       }));
 
     new Setting(containerEl)
-      .setName("增量更新索引")
-      .setDesc("只更新有变更的笔记，速度更快")
-      .addButton(btn => btn.setButtonText("Update Index").onClick(async () => {
-        btn.setDisabled(true).setButtonText("更新中...");
-        if (!progressEl) {
-          progressEl = containerEl.createEl("p", { cls: "setting-item-description" });
-        }
-        try {
-          await (this.plugin as any).runIndex("incremental", (cur: number, total: number) => {
-            if (progressEl) progressEl.setText(`进度：${cur} / ${total}`);
-          });
-        } finally {
-          btn.setDisabled(false).setButtonText("Update Index");
-          if (progressEl) progressEl.setText("完成");
+      .setName(t("settings.incrIndexName"))
+      .setDesc(t("settings.incrIndexDesc"))
+      .addButton(btn => btn.setButtonText(t("settings.incrIndexBtn")).onClick(async () => {
+        const runIncremental = async () => {
+          btn.setDisabled(true).setButtonText(t("settings.incrIndexUpdating"));
+          if (!progressEl) {
+            progressEl = containerEl.createEl("p", { cls: "setting-item-description" });
+          }
+          try {
+            await (this.plugin as any).runIndex("incremental", (cur: number, total: number) => {
+              if (progressEl) progressEl.setText(tFormat("settings.progress", cur, total));
+            });
+          } finally {
+            btn.setDisabled(false).setButtonText(t("settings.incrIndexBtn"));
+            if (progressEl) progressEl.setText(t("settings.buildIndexDone"));
+          }
+        };
+
+        const runFull = async () => {
+          btn.setDisabled(true).setButtonText(t("settings.fullRebuildBuilding"));
+          if (!progressEl) {
+            progressEl = containerEl.createEl("p", { cls: "setting-item-description" });
+          }
+          try {
+            await (this.plugin as any).runIndex("full", (cur: number, total: number) => {
+              if (progressEl) progressEl.setText(tFormat("settings.progress", cur, total));
+            });
+          } finally {
+            btn.setDisabled(false).setButtonText(t("settings.incrIndexBtn"));
+            if (progressEl) progressEl.setText(t("settings.buildIndexDone"));
+          }
+        };
+
+        if ((this.plugin as any).indexLoader.isStale()) {
+          const reason = (this.plugin as any).indexLoader.getStaleReason();
+          new ConfirmModal(
+            this.app,
+            tFormat("settings.incrIndexRebuildWarning", reason),
+            runFull,
+            t("settings.confirmRebuild"),
+            t("settings.cancel")
+          ).open();
+        } else {
+          await runIncremental();
         }
       }));
   }
+}
+
+class ConfirmModal extends Modal {
+  constructor(
+    app: App,
+    private message: string,
+    private onConfirm: () => void,
+    private confirmText = t("settings.confirmRebuild"),
+    private cancelText = t("settings.cancel")
+  ) {
+    super(app);
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl("p", { text: this.message });
+    const btnRow = contentEl.createDiv({ cls: "modal-button-container" });
+    btnRow.createEl("button", { text: this.cancelText, cls: "mod-warning" }).onclick = () => this.close();
+    const confirmBtn = btnRow.createEl("button", { text: this.confirmText, cls: "mod-cta" });
+    confirmBtn.onclick = () => { this.close(); this.onConfirm(); };
+  }
+  onClose() { this.contentEl.empty(); }
 }

@@ -1,39 +1,88 @@
 import { EmbeddingProvider, RerankProvider, LLMProvider, Message } from "./providers/types";
-import { NoteEntry, SearchResult, embeddingRecall } from "./SearchEngine";
+import { ChunkEntry, ChunkResult, chunkEmbeddingRecall } from "./SearchEngine";
+import { t } from "./i18n";
 
 export interface PipelineConfig { recallTopK: number; finalTopK: number; }
 export interface AskResult { answer: string; sources: Array<{ title: string; path: string }>; }
+export interface RelatedNote { path: string; title: string; summary: string; score: number; bestChunkText: string; }
 
-export async function semanticSearch(query: string, notes: NoteEntry[], embedding: EmbeddingProvider, reranker: RerankProvider | null, config: PipelineConfig): Promise<SearchResult[]> {
+export async function semanticSearch(
+  query: string,
+  chunks: ChunkEntry[],
+  embedding: EmbeddingProvider,
+  reranker: RerankProvider | null,
+  config: PipelineConfig
+): Promise<ChunkResult[]> {
   const [queryVec] = await embedding.embed([query]);
-  const candidates = embeddingRecall(queryVec, notes, config.recallTopK);
+  const candidates = chunkEmbeddingRecall(queryVec, chunks, config.recallTopK);
   if (!reranker || candidates.length === 0) return candidates.slice(0, config.finalTopK);
-  const docs = candidates.map(r => `${r.note.title}\n${r.note.summary}`);
+  const docs = candidates.map(r => r.chunk.text);
   const scores = await reranker.rerank(query, docs);
-  return candidates.map((r, i) => ({ ...r, score: scores[i] })).sort((a, b) => b.score - a.score).slice(0, config.finalTopK);
+  return candidates
+    .map((r, i) => ({ ...r, score: scores[i] }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, config.finalTopK);
 }
 
-const BODY_CHAR_LIMIT = 2000;
-
-export async function askVault(question: string, notes: NoteEntry[], embedding: EmbeddingProvider, reranker: RerankProvider | null, llm: LLMProvider, config: PipelineConfig, onChunk: (c: string) => void, readFile?: (path: string) => Promise<string>): Promise<AskResult> {
-  const results = await semanticSearch(question, notes, embedding, reranker, config);
-  const contextParts = await Promise.all(results.map(async (r, i) => {
-    let body = r.note.summary ?? "";
-    if (readFile) {
-      try {
-        const raw = await readFile(r.note.path);
-        // strip frontmatter
-        const stripped = raw.replace(/^---[\s\S]*?---\n?/, "").trim();
-        body = stripped.length > BODY_CHAR_LIMIT ? stripped.slice(0, BODY_CHAR_LIMIT) + "…" : stripped;
-      } catch { /* fallback to summary */ }
+export async function findRelatedNotes(
+  queryTitle: string,
+  querySummary: string,
+  queryTags: string[],
+  excludePath: string,
+  chunks: ChunkEntry[],
+  embedding: EmbeddingProvider,
+  reranker: RerankProvider | null,
+  config: PipelineConfig
+): Promise<RelatedNote[]> {
+  const queryStr = [queryTitle, querySummary, queryTags.join(" ")].filter(Boolean).join("\n");
+  const otherChunks = chunks.filter(c => c.path !== excludePath);
+  const chunkResults = await semanticSearch(queryStr, otherChunks, embedding, reranker, { recallTopK: 40, finalTopK: 40 });
+  // Group by path, take best score per note
+  const noteMap = new Map<string, RelatedNote>();
+  for (const r of chunkResults) {
+    const existing = noteMap.get(r.chunk.path);
+    if (!existing || r.score > existing.score) {
+      noteMap.set(r.chunk.path, {
+        path: r.chunk.path,
+        title: r.chunk.title,
+        summary: r.chunk.summary,
+        score: r.score,
+        bestChunkText: r.chunk.text,
+      });
     }
-    return `[${i+1}] 标题：${r.note.title}\n${body}`;
-  }));
+  }
+  return Array.from(noteMap.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, config.finalTopK);
+}
+
+export async function askVault(
+  question: string,
+  chunks: ChunkEntry[],
+  embedding: EmbeddingProvider,
+  reranker: RerankProvider | null,
+  llm: LLMProvider,
+  config: PipelineConfig,
+  onChunk: (c: string) => void
+): Promise<AskResult> {
+  const results = await semanticSearch(question, chunks, embedding, reranker, config);
+  const contextParts = results.map((r, i) =>
+    `[${i + 1}] 标题：${r.chunk.title}\n${r.chunk.text}`
+  );
   const context = contextParts.join("\n\n---\n\n");
   const messages: Message[] = [
-    { role: "system", content: "你是知识库助手。你的唯一信息来源是用户提供的笔记内容，禁止使用任何外部知识或自行推断补充。回答时严格引用笔记原文，用 [序号] 标注来源。如果提供的笔记中没有足够信息回答问题，必须明确回复：知识库中未检索到相关内容，不得编造或推测。" },
+    { role: "system", content: t("pipeline.systemPrompt") },
     { role: "user", content: `知识库内容：\n\n${context}\n\n问题：${question}` },
   ];
   await llm.chat(messages, onChunk);
-  return { answer: "", sources: results.map(r => ({ title: r.note.title, path: r.note.path })) };
+  // Deduplicate sources by path
+  const seen = new Set<string>();
+  const sources: Array<{ title: string; path: string }> = [];
+  for (const r of results) {
+    if (!seen.has(r.chunk.path)) {
+      seen.add(r.chunk.path);
+      sources.push({ title: r.chunk.title, path: r.chunk.path });
+    }
+  }
+  return { answer: "", sources };
 }

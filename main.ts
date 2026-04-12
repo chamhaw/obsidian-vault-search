@@ -14,7 +14,7 @@ export default class VaultSearchPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
     this.indexLoader = new IndexLoader(this.app);
-    this.indexLoader.setConfiguredModel(this.settings.embeddingModel);
+    this.indexLoader.setConfig({ model: this.settings.embeddingModel, baseUrl: this.settings.embeddingBaseUrl });
     this.rebuildProviders();
     this.registerView(VIEW_TYPE, leaf => new VaultSearchView(leaf, this));
     this.addRibbonIcon("search", "Vault Search", () => this.activateView());
@@ -38,10 +38,13 @@ export default class VaultSearchPlugin extends Plugin {
 
   async runIndex(mode: "full" | "incremental", onProgress: (cur: number, total: number) => void) {
     const { Indexer } = await import("./Indexer");
-    const indexer = new Indexer(this.app, this.providers.embedding, this.settings.embeddingModel);
+    const indexer = new Indexer(this.app, this.providers.embedding, this.settings.embeddingModel, this.settings.embeddingBaseUrl);
     if (mode === "full") await indexer.buildFull(onProgress);
     else await indexer.buildIncremental(onProgress);
     await this.indexLoader.load();
+    this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => {
+      if (leaf.view instanceof VaultSearchView) (leaf.view as VaultSearchView).refresh();
+    });
   }
 
   rebuildProviders() {
@@ -54,5 +57,12 @@ export default class VaultSearchPlugin extends Plugin {
   }
 
   async loadSettings() { this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()); }
-  async saveSettings() { await this.saveData(this.settings); this.rebuildProviders(); }
+  async saveSettings() {
+    await this.saveData(this.settings);
+    this.rebuildProviders();
+    this.indexLoader.setConfig({ model: this.settings.embeddingModel, baseUrl: this.settings.embeddingBaseUrl });
+    this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => {
+      if (leaf.view instanceof VaultSearchView) (leaf.view as VaultSearchView).refresh();
+    });
+  }
 }

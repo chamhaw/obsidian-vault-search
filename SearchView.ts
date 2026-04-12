@@ -1,11 +1,18 @@
 import { ItemView, WorkspaceLeaf, TFile, MarkdownView, Notice } from "obsidian";
 import type VaultSearchPlugin from "./main";
-import { semanticSearch, askVault } from "./pipeline";
+import { semanticSearch, findRelatedNotes, askVault } from "./pipeline";
+import { t } from "./i18n";
 
 export const VIEW_TYPE = "vault-search-view";
 
+type TabId = "search" | "ask" | "related";
+
 export class VaultSearchView extends ItemView {
-  private tab: "search" | "ask" | "related" = "search";
+  private tab: TabId = "search";
+  private tabBtns: Partial<Record<TabId, HTMLElement>> = {};
+  private tabBodies: Partial<Record<TabId, HTMLElement>> = {};
+  private staleBannerEl: HTMLElement | null = null;
+
   constructor(leaf: WorkspaceLeaf, private plugin: VaultSearchPlugin) { super(leaf); }
   getViewType() { return VIEW_TYPE; }
   getDisplayText() { return "Vault Search"; }
@@ -13,59 +20,132 @@ export class VaultSearchView extends ItemView {
 
   async onOpen() {
     this.render();
-    this.registerEvent(this.app.workspace.on("active-leaf-change", () => { if (this.tab === "related") this.renderBody(); }));
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", () => {
+        if (this.tab === "related") this.refreshRelated();
+      })
+    );
   }
+
+  refresh() {
+    this.updateStaleBanner();
+    if (this.tab === "related") this.refreshRelated();
+  }
+
+  // ---------- Layout ----------
 
   private render() {
     const { contentEl } = this;
     contentEl.empty();
+
+    // Stale banner (always present, hidden when not stale)
+    this.staleBannerEl = contentEl.createDiv({ cls: "vs-stale-banner" });
+    this.updateStaleBanner();
+
+    // Tab bar
     const bar = contentEl.createDiv({ cls: "vs-tabs" });
-    (["search", "ask", "related"] as const).forEach(id => {
-      const b = bar.createEl("button", { text: {search:"搜索",ask:"问答",related:"关联"}[id], cls: `vs-tab${this.tab===id?" active":""}` });
-      b.onclick = () => { this.tab = id; this.render(); };
-    });
-    this.renderBody(contentEl.createDiv({ cls: "vs-body" }));
+    const tabIds: TabId[] = ["search", "ask", "related"];
+    for (const id of tabIds) {
+      const btn = bar.createEl("button", {
+        text: t(`tab.${id}`),
+        cls: `vs-tab${this.tab === id ? " active" : ""}`,
+      });
+      btn.onclick = () => this.switchTab(id);
+      this.tabBtns[id] = btn;
+    }
+
+    // Body wrapper — one div per tab, show/hide
+    const wrapper = contentEl.createDiv({ cls: "vs-body-wrapper" });
+    for (const id of tabIds) {
+      const body = wrapper.createDiv({ cls: "vs-body" });
+      body.style.display = this.tab === id ? "" : "none";
+      this.tabBodies[id] = body;
+    }
+
+    // Init each tab's content
+    this.renderSearch(this.tabBodies.search!);
+    this.renderAsk(this.tabBodies.ask!);
+    this.renderRelated(this.tabBodies.related!);
   }
 
-  private renderBody(el?: HTMLElement) {
-    const body = el ?? this.contentEl.querySelector(".vs-body") as HTMLElement;
-    if (!el) body.empty();
-    if (this.tab === "search") this.renderSearch(body);
-    else if (this.tab === "ask") this.renderAsk(body);
-    else this.renderRelated(body);
+  private switchTab(id: TabId) {
+    this.tab = id;
+    for (const [k, btn] of Object.entries(this.tabBtns)) {
+      btn?.classList.toggle("active", k === id);
+    }
+    for (const [k, body] of Object.entries(this.tabBodies)) {
+      if (body) body.style.display = k === id ? "" : "none";
+    }
+    if (id === "related") this.refreshRelated();
   }
+
+  private updateStaleBanner() {
+    if (!this.staleBannerEl) return;
+    if (this.plugin.indexLoader.isStale()) {
+      this.staleBannerEl.style.display = "";
+      this.staleBannerEl.setText(
+        t("stale.bannerPrefix") + this.plugin.indexLoader.getStaleReason()
+      );
+    } else {
+      this.staleBannerEl.style.display = "none";
+    }
+  }
+
+  // ---------- Search Tab ----------
 
   private renderSearch(el: HTMLElement) {
-    const input = el.createEl("input", { type: "text", placeholder: "语义搜索...", cls: "vs-input" });
+    const input = el.createEl("input", {
+      type: "text",
+      placeholder: t("search.placeholder"),
+      cls: "vs-input",
+    });
     const results = el.createDiv({ cls: "vs-results" });
-    let t: ReturnType<typeof setTimeout>;
-    input.oninput = () => { clearTimeout(t); t = setTimeout(() => this.doSearch(input.value, results), 300); };
+    let timer: ReturnType<typeof setTimeout>;
+    input.oninput = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => this.doSearch(input.value, results), 300);
+    };
     input.focus();
   }
 
   private async doSearch(query: string, el: HTMLElement) {
     if (!query.trim()) { el.empty(); return; }
     const index = this.plugin.indexLoader.getIndex();
-    if (!index) { el.setText("索引未加载"); return; }
-    el.setText("搜索中...");
+    if (!index) { el.setText(t("search.indexNotLoaded")); return; }
+    el.setText(t("search.loading"));
     try {
-      const results = await semanticSearch(query, index.notes, this.plugin.providers.embedding, this.plugin.providers.reranker, { recallTopK: this.plugin.settings.rerankerRecallTopK, finalTopK: this.plugin.settings.rerankerFinalTopK });
+      const results = await semanticSearch(
+        query,
+        index.chunks,
+        this.plugin.providers.embedding,
+        this.plugin.providers.reranker,
+        { recallTopK: this.plugin.settings.rerankerRecallTopK, finalTopK: this.plugin.settings.rerankerFinalTopK }
+      );
       el.empty();
-      if (!results.length) { el.setText("无结果"); return; }
+      if (!results.length) { el.setText(t("search.noResults")); return; }
       results.forEach(r => {
         const item = el.createDiv({ cls: "vs-item" });
         const row = item.createDiv({ cls: "vs-title-row" });
-        row.createEl("div", { text: r.note.title, cls: "vs-title" });
-        row.createEl("div", { text: `${(r.score*100).toFixed(1)}%`, cls: "vs-score" });
-        if (r.note.summary) item.createEl("div", { text: r.note.summary, cls: "vs-summary" });
-        item.onclick = () => this.openNote(r.note.path);
+        row.createEl("div", { text: r.chunk.title, cls: "vs-title" });
+        row.createEl("div", { text: `${(r.score * 100).toFixed(1)}%`, cls: "vs-score" });
+        // Chunk text snippet (first 120 chars)
+        const snippet = r.chunk.text.slice(0, 120).replace(/\n/g, " ");
+        item.createEl("div", { text: snippet, cls: "vs-summary" });
+        item.onclick = () => this.openNoteAtLine(r.chunk.path, r.chunk.startLine);
       });
-    } catch(e: any) { el.setText(`错误: ${e.message}`); }
+    } catch (e: any) {
+      el.setText(t("search.errorPrefix") + e.message);
+    }
   }
 
+  // ---------- Ask Tab ----------
+
   private renderAsk(el: HTMLElement) {
-    const ta = el.createEl("textarea", { placeholder: "向知识库提问...", cls: "vs-textarea" });
-    const btn = el.createEl("button", { text: "提问", cls: "vs-btn" });
+    const ta = el.createEl("textarea", {
+      placeholder: t("ask.placeholder"),
+      cls: "vs-textarea",
+    });
+    const btn = el.createEl("button", { text: t("ask.submit"), cls: "vs-btn" });
     const ans = el.createDiv({ cls: "vs-answer" });
     const run = () => this.doAsk(ta.value, ans);
     btn.onclick = run;
@@ -75,49 +155,97 @@ export class VaultSearchView extends ItemView {
   private async doAsk(question: string, el: HTMLElement) {
     if (!question.trim()) return;
     const index = this.plugin.indexLoader.getIndex();
-    if (!index) { el.setText("索引未加载"); return; }
+    if (!index) { el.setText(t("ask.indexNotLoaded")); return; }
     el.empty();
     const ansEl = el.createDiv({ cls: "vs-ans-text" });
-    ansEl.setText("思考中...");
+    ansEl.setText(t("ask.thinking"));
     let full = "";
     try {
-      const readFile = (path: string) => this.app.vault.adapter.read(path);
-      const result = await askVault(question, index.notes, this.plugin.providers.embedding, this.plugin.providers.reranker, this.plugin.providers.llm, { recallTopK: this.plugin.settings.rerankerRecallTopK, finalTopK: this.plugin.settings.rerankerFinalTopK }, chunk => { full += chunk; ansEl.setText(full); }, readFile);
+      const result = await askVault(
+        question,
+        index.chunks,
+        this.plugin.providers.embedding,
+        this.plugin.providers.reranker,
+        this.plugin.providers.llm,
+        { recallTopK: this.plugin.settings.rerankerRecallTopK, finalTopK: this.plugin.settings.rerankerFinalTopK },
+        chunk => { full += chunk; ansEl.setText(full); }
+      );
       if (result.sources.length) {
         const src = el.createDiv({ cls: "vs-sources" });
-        src.createEl("div", { text: "参考来源：", cls: "vs-src-label" });
-        result.sources.forEach((s, i) => { const l = src.createEl("div", { text: `[${i+1}] ${s.title}`, cls: "vs-src-link" }); l.onclick = () => this.openNote(s.path); });
+        src.createEl("div", { text: t("ask.sourcesLabel"), cls: "vs-src-label" });
+        result.sources.forEach((s, i) => {
+          const l = src.createEl("div", { text: `[${i + 1}] ${s.title}`, cls: "vs-src-link" });
+          l.onclick = () => this.openNoteAtLine(s.path, 0);
+        });
       }
-    } catch(e: any) { ansEl.setText(`错误: ${e.message}`); }
+    } catch (e: any) {
+      ansEl.setText(t("ask.errorPrefix") + e.message);
+    }
   }
+
+  // ---------- Related Tab ----------
 
   private renderRelated(el: HTMLElement) {
+    el.empty();
     const active = this.app.workspace.getActiveFile();
-    if (!active) { el.setText("请打开一篇笔记"); return; }
+    if (!active) { el.setText(t("related.noActiveNote")); return; }
     const index = this.plugin.indexLoader.getIndex();
-    if (!index) { el.setText("索引未加载"); return; }
-    const cur = index.notes.find(n => n.path === active.path);
-    if (!cur) { el.setText("当前笔记不在索引中，请重建索引"); return; }
-    el.setText("加载中...");
-    const query = `${cur.title}\n${cur.summary}\n${cur.tags.join(" ")}`;
-    semanticSearch(query, index.notes.filter(n => n.path !== active.path), this.plugin.providers.embedding, this.plugin.providers.reranker, { recallTopK: 20, finalTopK: 5 })
-      .then(results => {
-        el.empty();
-        el.createEl("div", { text: `与「${cur.title}」相关：`, cls: "vs-rel-title" });
-        results.forEach(r => {
-          const item = el.createDiv({ cls: "vs-item" });
-          item.createEl("div", { text: r.note.title, cls: "vs-title" });
-          if (r.note.summary) item.createEl("div", { text: r.note.summary, cls: "vs-summary" });
-          const insBtn = item.createEl("button", { text: "插入链接", cls: "vs-ins-btn" });
-          insBtn.onclick = e => { e.stopPropagation(); this.insertWikilink(r.note.title); };
-          item.onclick = () => this.openNote(r.note.path);
-        });
-      }).catch((e: any) => el.setText(`错误: ${e.message}`));
+    if (!index) { el.setText(t("related.indexNotLoaded")); return; }
+
+    // Find at least one chunk for the current note to get metadata
+    const curChunk = index.chunks.find(c => c.path === active.path);
+    if (!curChunk) { el.setText(t("related.notInIndex")); return; }
+
+    el.setText(t("related.loading"));
+
+    findRelatedNotes(
+      curChunk.title,
+      curChunk.summary,
+      curChunk.tags,
+      active.path,
+      index.chunks,
+      this.plugin.providers.embedding,
+      this.plugin.providers.reranker,
+      { recallTopK: 40, finalTopK: 5 }
+    ).then(results => {
+      el.empty();
+      el.createEl("div", {
+        text: t("related.titlePrefix") + curChunk.title + t("related.titleSuffix"),
+        cls: "vs-rel-title",
+      });
+      results.forEach(r => {
+        const item = el.createDiv({ cls: "vs-item" });
+        const row = item.createDiv({ cls: "vs-title-row" });
+        row.createEl("div", { text: r.title, cls: "vs-title" });
+        row.createEl("div", { text: `${(r.score * 100).toFixed(1)}%`, cls: "vs-score" });
+        if (r.summary) item.createEl("div", { text: r.summary, cls: "vs-summary" });
+        const insBtn = item.createEl("button", { text: t("related.insertLink"), cls: "vs-ins-btn" });
+        insBtn.onclick = e => { e.stopPropagation(); this.insertWikilink(r.title); };
+        item.onclick = () => this.openNoteAtLine(r.path, 0);
+      });
+    }).catch((e: any) => el.setText(t("related.errorPrefix") + e.message));
   }
 
-  private async openNote(path: string) {
-    const f = this.app.vault.getAbstractFileByPath(path);
-    if (f instanceof TFile) await this.app.workspace.getLeaf().openFile(f);
+  private refreshRelated() {
+    const body = this.tabBodies.related;
+    if (body) this.renderRelated(body);
+  }
+
+  // ---------- Helpers ----------
+
+  private async openNoteAtLine(path: string, startLine: number) {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) return;
+    const leaf = this.app.workspace.getLeaf();
+    await leaf.openFile(file);
+    const view = leaf.view;
+    if (view instanceof MarkdownView && startLine > 0) {
+      view.editor.scrollIntoView(
+        { from: { line: startLine, ch: 0 }, to: { line: startLine, ch: 0 } },
+        true
+      );
+      view.editor.setCursor({ line: startLine, ch: 0 });
+    }
   }
 
   private insertWikilink(title: string) {
@@ -130,7 +258,6 @@ export class VaultSearchView extends ItemView {
       }
       view.editor.replaceSelection(`[[${title}]]`);
     } else {
-      // 回退：复制到剪贴板
       navigator.clipboard.writeText(`[[${title}]]`);
       new Notice(`已复制 [[${title}]] 到剪贴板`);
     }
