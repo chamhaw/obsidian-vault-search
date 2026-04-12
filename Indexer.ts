@@ -128,6 +128,14 @@ export class Indexer {
     new Notice(tFormat("indexer.incrementalComplete", noteCount));
   }
 
+  async buildSingleFile(file: TFile): Promise<void> {
+    const existing = await this.loadExisting();
+    const otherChunks = existing.chunks.filter(c => c.path !== file.path);
+    const newChunks = await this.embedFiles([file], {}, (_cur, _total) => {});
+    await this.writeIndex([...otherChunks, ...newChunks]);
+    new Notice(`✓ 已索引：${file.basename}（${newChunks.length} 个 chunk）`);
+  }
+
   private getVaultFiles(): TFile[] {
     return this.app.vault.getMarkdownFiles().filter(f => {
       const topDir = f.path.split("/")[0];

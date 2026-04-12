@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, Modal } from "obsidian";
+import { App, PluginSettingTab, Setting, Modal, Notice } from "obsidian";
 import type VaultSearchPlugin from "./main";
 import { t, tFormat } from "./i18n";
 
@@ -112,6 +112,26 @@ export class VaultSearchSettingTab extends PluginSettingTab {
           await runIncremental();
         }
       }));
+
+    new Setting(containerEl)
+      .setName(t("settings.testSingleName"))
+      .setDesc(t("settings.testSingleDesc"))
+      .addButton(btn => btn
+        .setButtonText(t("settings.testSingleBtn"))
+        .onClick(async () => {
+          const file = this.app.workspace.getActiveFile();
+          if (!file) {
+            new Notice("请先在编辑器中打开一篇笔记");
+            return;
+          }
+          btn.setDisabled(true).setButtonText("索引中...");
+          try {
+            await this.plugin.runIndexSingleFile(file);
+          } finally {
+            btn.setDisabled(false).setButtonText(t("settings.testSingleBtn"));
+          }
+        })
+      );
   }
 }
 

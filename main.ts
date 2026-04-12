@@ -1,4 +1,4 @@
-import { Plugin, MarkdownView } from "obsidian";
+import { Plugin, MarkdownView, TFile } from "obsidian";
 import { VaultSearchSettingTab, VaultSearchSettings, DEFAULT_SETTINGS } from "./SettingsTab";
 import { VaultSearchView, VIEW_TYPE } from "./SearchView";
 import { IndexLoader } from "./IndexLoader";
@@ -41,6 +41,16 @@ export default class VaultSearchPlugin extends Plugin {
     const indexer = new Indexer(this.app, this.providers.embedding, this.settings.embeddingModel, this.settings.embeddingBaseUrl);
     if (mode === "full") await indexer.buildFull(onProgress);
     else await indexer.buildIncremental(onProgress);
+    await this.indexLoader.load();
+    this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => {
+      if (leaf.view instanceof VaultSearchView) (leaf.view as VaultSearchView).refresh();
+    });
+  }
+
+  async runIndexSingleFile(file: TFile): Promise<void> {
+    const { Indexer } = await import("./Indexer");
+    const indexer = new Indexer(this.app, this.providers.embedding, this.settings.embeddingModel, this.settings.embeddingBaseUrl);
+    await indexer.buildSingleFile(file);
     await this.indexLoader.load();
     this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => {
       if (leaf.view instanceof VaultSearchView) (leaf.view as VaultSearchView).refresh();

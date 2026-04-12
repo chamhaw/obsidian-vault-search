@@ -69,6 +69,9 @@ const strings: Record<string, {zh: string, en: string}> = {
     "settings.cancel": {zh: "取消", en: "Cancel"},
     "settings.fullRebuildBuilding": {zh: "全量重建中...", en: "Rebuilding..."},
     "settings.progress": {zh: "进度：%d / %d", en: "Progress: %d / %d"},
+    "settings.testSingleName": {zh: "测试：仅索引当前笔记", en: "Test: Index active note"},
+    "settings.testSingleDesc": {zh: "仅对当前打开的笔记生成索引，用于功能验证，消耗极少 token", en: "Index only the currently open note for testing. Minimal token usage."},
+    "settings.testSingleBtn": {zh: "索引当前笔记", en: "Index active note"},
 
     "pipeline.systemPrompt": {zh: "你是知识库助手。你的唯一信息来源是用户提供的笔记内容，禁止使用任何外部知识或自行推断补充。回答时严格引用笔记原文，用 [序号] 标注来源。如果提供的笔记中没有足够信息回答问题，必须明确回复：知识库中未检索到相关内容，不得编造或推测。", en: "You are a knowledge base assistant. Your only information source is the provided note content. Do not use external knowledge or make inferences beyond the notes. When answering, strictly cite the notes using [number] markers. If the notes don't contain enough information, clearly state: 'No relevant content found in the knowledge base.' Do not fabricate or speculate."},
 };
