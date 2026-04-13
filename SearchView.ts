@@ -193,15 +193,18 @@ export class VaultSearchView extends ItemView {
     const index = this.plugin.indexLoader.getIndex();
     if (!index) { el.setText(t("related.indexNotLoaded")); return; }
 
-    // Find at least one chunk for the current note to get metadata
-    const curChunk = index.chunks.find(c => c.path === active.path);
-    if (!curChunk) { el.setText(t("related.notInIndex")); return; }
+    const curChunks = index.chunks.filter(c => c.path === active.path);
+    if (curChunks.length === 0) { el.setText(t("related.notInIndex")); return; }
+    const curChunk = curChunks[0];
 
     el.setText(t("related.loading"));
 
+    // Use actual chunk text (up to 4 chunks) so notes without frontmatter summary still produce a rich query
+    const noteBodyText = curChunks.slice(0, 4).map(c => c.text).join("\n\n").slice(0, 500);
+
     findRelatedNotes(
       curChunk.title,
-      curChunk.summary,
+      noteBodyText,
       curChunk.tags,
       active.path,
       index.chunks,
@@ -266,7 +269,12 @@ export class VaultSearchView extends ItemView {
         { from: { line: startLine, ch: 0 }, to: { line: startLine, ch: 0 } },
         true
       );
-      view.editor.setCursor({ line: startLine, ch: 0 });
+      // Select the entire line so the user can spot it immediately
+      const lineLen = view.editor.getLine(startLine).length;
+      view.editor.setSelection(
+        { line: startLine, ch: 0 },
+        { line: startLine, ch: lineLen }
+      );
     }
   }
 

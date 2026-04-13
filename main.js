@@ -641,7 +641,10 @@ async function findRelatedNotes(queryTitle, querySummary, queryTags, excludePath
       });
     }
   }
-  return Array.from(noteMap.values()).sort((a, b) => b.score - a.score).slice(0, config.finalTopK);
+  return Array.from(noteMap.values()).sort((a, b) => b.score - a.score).filter((r) => {
+    var _a;
+    return r.score >= ((_a = config.minScore) != null ? _a : 0);
+  }).slice(0, config.finalTopK);
 }
 async function askVault(question, chunks, embedding, reranker, llm, config, onChunk) {
   const results = await semanticSearch(question, chunks, embedding, reranker, config);
@@ -874,15 +877,17 @@ var VaultSearchView = class extends import_obsidian2.ItemView {
       el.setText(t("related.indexNotLoaded"));
       return;
     }
-    const curChunk = index.chunks.find((c) => c.path === active.path);
-    if (!curChunk) {
+    const curChunks = index.chunks.filter((c) => c.path === active.path);
+    if (curChunks.length === 0) {
       el.setText(t("related.notInIndex"));
       return;
     }
+    const curChunk = curChunks[0];
     el.setText(t("related.loading"));
+    const noteBodyText = curChunks.slice(0, 4).map((c) => c.text).join("\n\n").slice(0, 500);
     findRelatedNotes(
       curChunk.title,
-      curChunk.summary,
+      noteBodyText,
       curChunk.tags,
       active.path,
       index.chunks,
@@ -946,7 +951,11 @@ var VaultSearchView = class extends import_obsidian2.ItemView {
         { from: { line: startLine, ch: 0 }, to: { line: startLine, ch: 0 } },
         true
       );
-      view.editor.setCursor({ line: startLine, ch: 0 });
+      const lineLen = view.editor.getLine(startLine).length;
+      view.editor.setSelection(
+        { line: startLine, ch: 0 },
+        { line: startLine, ch: lineLen }
+      );
     }
   }
   insertWikilink(title) {

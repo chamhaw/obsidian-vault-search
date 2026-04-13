@@ -54,6 +54,7 @@ export async function findRelatedNotes(
   }
   return Array.from(noteMap.values())
     .sort((a, b) => b.score - a.score)
+    .filter(r => r.score >= (config.minScore ?? 0))
     .slice(0, config.finalTopK);
 }
 
