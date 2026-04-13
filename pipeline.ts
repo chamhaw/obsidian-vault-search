@@ -2,7 +2,7 @@ import { EmbeddingProvider, RerankProvider, LLMProvider, Message } from "./provi
 import { ChunkEntry, ChunkResult, chunkEmbeddingRecall } from "./SearchEngine";
 import { t } from "./i18n";
 
-export interface PipelineConfig { recallTopK: number; finalTopK: number; }
+export interface PipelineConfig { recallTopK: number; finalTopK: number; minScore?: number; }
 export interface AskResult { answer: string; sources: Array<{ title: string; path: string }>; }
 export interface RelatedNote { path: string; title: string; summary: string; score: number; bestChunkText: string; }
 
@@ -15,13 +15,14 @@ export async function semanticSearch(
 ): Promise<ChunkResult[]> {
   const [queryVec] = await embedding.embed([query]);
   const candidates = chunkEmbeddingRecall(queryVec, chunks, config.recallTopK);
-  if (!reranker || candidates.length === 0) return candidates.slice(0, config.finalTopK);
+  if (!reranker || candidates.length === 0) return candidates.slice(0, config.finalTopK).filter(r => r.score >= (config.minScore ?? 0));
   const docs = candidates.map(r => r.chunk.text);
   const scores = await reranker.rerank(query, docs);
   return candidates
     .map((r, i) => ({ ...r, score: scores[i] }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, config.finalTopK);
+    .slice(0, config.finalTopK)
+    .filter(r => r.score >= (config.minScore ?? 0));
 }
 
 export async function findRelatedNotes(

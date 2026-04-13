@@ -7,6 +7,7 @@ export interface VaultSearchSettings {
   rerankerEnabled: boolean; rerankerBaseUrl: string; rerankerModel: string; rerankerApiKey: string;
   rerankerRecallTopK: number; rerankerFinalTopK: number;
   llmProvider: "anthropic" | "openai-compatible"; llmBaseUrl: string; llmModel: string; llmApiKey: string;
+  minScore: number;
 }
 
 export const DEFAULT_SETTINGS: VaultSearchSettings = {
@@ -14,6 +15,7 @@ export const DEFAULT_SETTINGS: VaultSearchSettings = {
   rerankerEnabled: true, rerankerBaseUrl: "https://api.siliconflow.cn/v1", rerankerModel: "BAAI/bge-reranker-v2-m3", rerankerApiKey: "",
   rerankerRecallTopK: 30, rerankerFinalTopK: 5,
   llmProvider: "anthropic", llmBaseUrl: "https://api.anthropic.com", llmModel: "claude-sonnet-4-6", llmApiKey: "",
+  minScore: 0.1,
 };
 
 export class VaultSearchSettingTab extends PluginSettingTab {
@@ -35,6 +37,34 @@ export class VaultSearchSettingTab extends PluginSettingTab {
     addText(t("settings.rerankerBaseUrl"), () => this.plugin.settings.rerankerBaseUrl, v => this.plugin.settings.rerankerBaseUrl = v);
     addText(t("settings.rerankerModel"), () => this.plugin.settings.rerankerModel, v => this.plugin.settings.rerankerModel = v);
     addText(t("settings.rerankerApiKey"), () => this.plugin.settings.rerankerApiKey, v => this.plugin.settings.rerankerApiKey = v, true);
+    containerEl.createEl("h2", { text: t("settings.filterSection") });
+    new Setting(containerEl)
+      .setName(t("settings.minScoreName"))
+      .setDesc(t("settings.minScoreDesc"))
+      .addText(text => {
+        text.setPlaceholder("10")
+          .setValue(String(Math.round(this.plugin.settings.minScore * 100)))
+          .onChange(async v => {
+            const n = parseFloat(v);
+            if (!isNaN(n) && n >= 0 && n <= 100) {
+              this.plugin.settings.minScore = n / 100;
+              await this.plugin.saveSettings();
+            }
+          });
+        text.inputEl.type = "number";
+        text.inputEl.min = "0";
+        text.inputEl.max = "100";
+        text.inputEl.style.width = "70px";
+      })
+      .addExtraButton(btn => btn
+        .setIcon("reset")
+        .setTooltip("Reset to 10%")
+        .onClick(async () => {
+          this.plugin.settings.minScore = 0.1;
+          await this.plugin.saveSettings();
+          this.display();
+        })
+      );
     containerEl.createEl("h2", { text: t("settings.llmSection") });
     new Setting(containerEl).setName(t("settings.llmProvider")).addDropdown(d => d.addOption("anthropic", "Anthropic Claude").addOption("openai-compatible", "OpenAI Compatible").setValue(this.plugin.settings.llmProvider).onChange(async (v: any) => { this.plugin.settings.llmProvider = v; await this.plugin.saveSettings(); }));
     addText(t("settings.llmBaseUrl"), () => this.plugin.settings.llmBaseUrl, v => this.plugin.settings.llmBaseUrl = v);

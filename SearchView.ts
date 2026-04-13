@@ -208,13 +208,34 @@ export class VaultSearchView extends ItemView {
       this.plugin.providers.embedding,
       this.plugin.providers.reranker,
       { recallTopK: 40, finalTopK: 5, minScore: this.plugin.settings.minScore }
-    ).then(results => {
+    ).then(async results => {
+      // filter out already-linked notes
+      let linkedTitles = new Set<string>();
+      try {
+        const content = await this.app.vault.read(active);
+        const re = /\[\[([^\]|#]+)/g;
+        let m;
+        while ((m = re.exec(content)) !== null) {
+          linkedTitles.add(m[1].trim().toLowerCase());
+        }
+      } catch { /* if read fails, skip dedup */ }
+
+      const unlinked = results.filter(
+        r => !linkedTitles.has(r.title.trim().toLowerCase())
+      );
+
       el.empty();
       el.createEl("div", {
         text: t("related.titlePrefix") + curChunk.title + t("related.titleSuffix"),
         cls: "vs-rel-title",
       });
-      results.forEach(r => {
+
+      if (unlinked.length === 0) {
+        el.createEl("div", { text: t("related.allLinked"), cls: "vs-empty" });
+        return;
+      }
+
+      unlinked.forEach(r => {
         const item = el.createDiv({ cls: "vs-item" });
         const row = item.createDiv({ cls: "vs-title-row" });
         row.createEl("div", { text: r.title, cls: "vs-title" });

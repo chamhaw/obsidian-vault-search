@@ -28,6 +28,7 @@ const strings: Record<string, {zh: string, en: string}> = {
     "related.loading": {zh: "加载中...", en: "Loading..."},
     "related.titlePrefix": {zh: "与「", en: "Related to \""},
     "related.titleSuffix": {zh: "」相关：", en: "\":"},
+    "related.allLinked": {zh: "所有相关笔记已建立链接", en: "All related notes are already linked"},
     "related.errorPrefix": {zh: "错误: ", en: "Error: "},
 
     "stale.bannerPrefix": {zh: "⚠️ 索引与当前配置不兼容，搜索结果不可信，请重建索引。\n原因：", en: "⚠️ Index is incompatible with current config. Please rebuild.\nReason: "},
@@ -48,6 +49,9 @@ const strings: Record<string, {zh: string, en: string}> = {
     "settings.rerankerBaseUrl": {zh: "Reranker Base URL", en: "Reranker Base URL"},
     "settings.rerankerModel": {zh: "Reranker 模型", en: "Reranker Model"},
     "settings.rerankerApiKey": {zh: "Reranker API Key", en: "Reranker API Key"},
+    "settings.filterSection": {zh: "过滤", en: "Filtering"},
+    "settings.minScoreName": {zh: "最低匹配度", en: "Minimum score"},
+    "settings.minScoreDesc": {zh: "低于此分值的结果将被过滤（0–100%，默认 10%）", en: "Results below this score are filtered out (0–100%, default 10%)"},
     "settings.llmSection": {zh: "LLM", en: "LLM"},
     "settings.llmProvider": {zh: "Provider", en: "Provider"},
     "settings.llmBaseUrl": {zh: "LLM Base URL", en: "LLM Base URL"},
