@@ -21,7 +21,8 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 
 // i18n.ts
 function detectLocale() {
-  const locale = window.moment?.locale() ?? navigator.language;
+  var _a, _b;
+  const locale = (_b = (_a = window.moment) == null ? void 0 : _a.locale()) != null ? _b : navigator.language;
   return locale.startsWith("zh") ? "zh" : "en";
 }
 function t(key) {
@@ -120,6 +121,7 @@ __export(Indexer_exports, {
   Indexer: () => Indexer
 });
 function parseFrontmatter(content) {
+  var _a, _b;
   if (!content.startsWith("---"))
     return { meta: { title: "", summary: "", tags: [] }, body: content, fmLines: 0 };
   const end = content.indexOf("\n---", 3);
@@ -139,7 +141,7 @@ function parseFrontmatter(content) {
     if (val.startsWith("[")) {
       try {
         raw[m[1]] = JSON.parse(val.replace(/'/g, '"'));
-      } catch {
+      } catch (e) {
         raw[m[1]] = val;
       }
     } else {
@@ -147,13 +149,14 @@ function parseFrontmatter(content) {
     }
   }
   const meta = {
-    title: raw.title ?? "",
-    summary: raw.summary ?? "",
+    title: (_a = raw.title) != null ? _a : "",
+    summary: (_b = raw.summary) != null ? _b : "",
     tags: Array.isArray(raw.tags) ? raw.tags : raw.tags ? [raw.tags] : []
   };
   return { meta, body, fmLines };
 }
 function chunkNote(body, fmLines) {
+  var _a, _b, _c, _d;
   const lines = body.split("\n");
   const sections = [];
   let current = [];
@@ -184,7 +187,7 @@ function chunkNote(body, fmLines) {
       }
     } else {
       const paragraphs = sectionText.split(/\n\n+/);
-      const firstParaTrimmed = paragraphs[0]?.trim() ?? "";
+      const firstParaTrimmed = (_b = (_a = paragraphs[0]) == null ? void 0 : _a.trim()) != null ? _b : "";
       const hasHeading = /^#{2,3} /.test(firstParaTrimmed) && !firstParaTrimmed.includes("\n");
       const headingPrefix = hasHeading ? firstParaTrimmed + "\n" : "";
       let lineIdx = 0;
@@ -196,7 +199,7 @@ function chunkNote(body, fmLines) {
         if (hasHeading && trimmed === firstParaTrimmed) {
           const paraLines2 = para.split("\n").length;
           lineIdx += paraLines2;
-          while (lineIdx < sectionLines.length && sectionLines[lineIdx]?.trim() === "")
+          while (lineIdx < sectionLines.length && ((_c = sectionLines[lineIdx]) == null ? void 0 : _c.trim()) === "")
             lineIdx++;
           paraOffset = section.startOffset + lineIdx;
           continue;
@@ -211,7 +214,7 @@ function chunkNote(body, fmLines) {
         }
         const paraLines = para.split("\n").length;
         lineIdx += paraLines;
-        while (lineIdx < sectionLines.length && sectionLines[lineIdx]?.trim() === "")
+        while (lineIdx < sectionLines.length && ((_d = sectionLines[lineIdx]) == null ? void 0 : _d.trim()) === "")
           lineIdx++;
         paraOffset = section.startOffset + lineIdx;
       }
@@ -227,7 +230,7 @@ var init_Indexer = __esm({
     SKIP_DIRS = /* @__PURE__ */ new Set([".obsidian", "_templates", ".search_index", "node_modules", ".smart-env"]);
     BATCH_SIZE = 8;
     EMBED_BATCH_SIZE = 32;
-    MAX_EMBED_CHARS = 480;
+    MAX_EMBED_CHARS = 350;
     MAX_CHUNK_CHARS = 500;
     MIN_CHUNK_CHARS = 30;
     Indexer = class {
@@ -279,20 +282,22 @@ var init_Indexer = __esm({
         });
       }
       async loadExisting() {
+        var _a;
         try {
           const content = await this.app.vault.adapter.read(".search_index/index.json");
           const idx = JSON.parse(content);
-          const chunks = idx.chunks ?? [];
+          const chunks = (_a = idx.chunks) != null ? _a : [];
           const mtimes = {};
           for (const c of chunks) {
             mtimes[c.path] = c.mtime;
           }
           return { chunks, mtimes };
-        } catch {
+        } catch (e) {
           return { chunks: [], mtimes: {} };
         }
       }
       async embedFiles(files, existingMtimes, onProgress) {
+        var _a, _b;
         const results = [];
         let processed = 0;
         for (let i = 0; i < files.length; i += BATCH_SIZE) {
@@ -321,31 +326,40 @@ var init_Indexer = __esm({
 ${d.chunkText}`;
               return raw.length > MAX_EMBED_CHARS ? raw.slice(0, MAX_EMBED_CHARS) : raw;
             });
-            try {
-              const allEmbeddings = [];
-              for (let k = 0; k < embedTexts.length; k += EMBED_BATCH_SIZE) {
-                const subTexts = embedTexts.slice(k, k + EMBED_BATCH_SIZE);
+            const embeddingMap = /* @__PURE__ */ new Map();
+            for (let k = 0; k < embedTexts.length; k += EMBED_BATCH_SIZE) {
+              const subTexts = embedTexts.slice(k, k + EMBED_BATCH_SIZE);
+              try {
                 const subEmbeddings = await this.embedding.embed(subTexts);
-                allEmbeddings.push(...subEmbeddings);
+                subEmbeddings.forEach((emb, j) => embeddingMap.set(k + j, emb));
+              } catch (e) {
+                for (let m = 0; m < subTexts.length; m++) {
+                  try {
+                    const [emb] = await this.embedding.embed([subTexts[m]]);
+                    embeddingMap.set(k + m, emb);
+                  } catch (e2) {
+                    const name = (_b = (_a = allChunkData[k + m]) == null ? void 0 : _a.file.basename) != null ? _b : "?";
+                    console.warn(`[vault-search] skip chunk (${name}): ${e2.message}`);
+                  }
+                }
               }
-              allChunkData.forEach((d, idx) => {
-                results.push({
-                  path: d.file.path,
-                  title: d.meta.title,
-                  summary: d.meta.summary,
-                  tags: d.meta.tags,
-                  mtime: d.file.stat.mtime,
-                  chunkIdx: d.chunkIdx,
-                  startLine: d.startLine,
-                  text: d.chunkText,
-                  embedding: allEmbeddings[idx]
-                });
-              });
-            } catch (e) {
-              const paths = [...new Set(allChunkData.map((d) => d.file.basename))].join(", ");
-              console.error(`[vault-search] embed batch failed (${paths}):`, e);
-              new import_obsidian3.Notice(tFormat("indexer.batchFailed", paths, e.message));
             }
+            allChunkData.forEach((d, idx) => {
+              const embedding = embeddingMap.get(idx);
+              if (!embedding)
+                return;
+              results.push({
+                path: d.file.path,
+                title: d.meta.title,
+                summary: d.meta.summary,
+                tags: d.meta.tags,
+                mtime: d.file.stat.mtime,
+                chunkIdx: d.chunkIdx,
+                startLine: d.startLine,
+                text: d.chunkText,
+                embedding
+              });
+            });
           }
           processed += batch.length;
           onProgress(Math.min(processed, files.length), files.length);
@@ -353,7 +367,8 @@ ${d.chunkText}`;
         return results;
       }
       async writeIndex(chunks) {
-        const dims = chunks[0]?.embedding.length ?? 0;
+        var _a, _b;
+        const dims = (_b = (_a = chunks[0]) == null ? void 0 : _a.embedding.length) != null ? _b : 0;
         const index = {
           version: 2,
           updated_at: (/* @__PURE__ */ new Date()).toISOString(),
@@ -364,7 +379,7 @@ ${d.chunkText}`;
         };
         try {
           await this.app.vault.adapter.mkdir(".search_index");
-        } catch {
+        } catch (e) {
         }
         await this.app.vault.adapter.write(".search_index/index.json", JSON.stringify(index));
       }
@@ -598,10 +613,16 @@ async function semanticSearch(query, chunks, embedding, reranker, config) {
   const [queryVec] = await embedding.embed([query]);
   const candidates = chunkEmbeddingRecall(queryVec, chunks, config.recallTopK);
   if (!reranker || candidates.length === 0)
-    return candidates.slice(0, config.finalTopK).filter((r) => r.score >= (config.minScore ?? 0));
+    return candidates.slice(0, config.finalTopK).filter((r) => {
+      var _a;
+      return r.score >= ((_a = config.minScore) != null ? _a : 0);
+    });
   const docs = candidates.map((r) => r.chunk.text);
   const scores = await reranker.rerank(query, docs);
-  return candidates.map((r, i) => ({ ...r, score: scores[i] })).sort((a, b) => b.score - a.score).slice(0, config.finalTopK).filter((r) => r.score >= (config.minScore ?? 0));
+  return candidates.map((r, i) => ({ ...r, score: scores[i] })).sort((a, b) => b.score - a.score).slice(0, config.finalTopK).filter((r) => {
+    var _a;
+    return r.score >= ((_a = config.minScore) != null ? _a : 0);
+  });
 }
 async function findRelatedNotes(queryTitle, querySummary, queryTags, excludePath, chunks, embedding, reranker, config) {
   const queryStr = [queryTitle, querySummary, queryTags.join(" ")].filter(Boolean).join("\n");
@@ -713,7 +734,7 @@ var VaultSearchView = class extends import_obsidian2.ItemView {
   switchTab(id) {
     this.tab = id;
     for (const [k, btn] of Object.entries(this.tabBtns)) {
-      btn?.classList.toggle("active", k === id);
+      btn == null ? void 0 : btn.classList.toggle("active", k === id);
     }
     for (const [k, body] of Object.entries(this.tabBodies)) {
       if (body)
@@ -877,7 +898,7 @@ var VaultSearchView = class extends import_obsidian2.ItemView {
         while ((m = re.exec(content)) !== null) {
           linkedTitles.add(m[1].trim().toLowerCase());
         }
-      } catch {
+      } catch (e) {
       }
       const unlinked = results.filter(
         (r) => !linkedTitles.has(r.title.trim().toLowerCase())
@@ -930,7 +951,7 @@ var VaultSearchView = class extends import_obsidian2.ItemView {
   }
   insertWikilink(title) {
     const view = this.plugin.lastMarkdownView;
-    if (view?.editor) {
+    if (view == null ? void 0 : view.editor) {
       const content = view.editor.getValue();
       if (content.includes(`[[${title}]]`)) {
         new import_obsidian2.Notice(`[[${title}]] \u5DF2\u5B58\u5728`);
@@ -986,7 +1007,7 @@ var IndexLoader = class {
       this.index = JSON.parse(content);
       this.checkStaleness();
       return this.index;
-    } catch {
+    } catch (e) {
       this.index = null;
       this.stale = false;
       this.staleReason = "";
@@ -1102,17 +1123,18 @@ var OpenAICompatibleLLMProvider = class {
         }
         let buf = "";
         res.on("data", (chunk) => {
+          var _a, _b, _c, _d, _e;
           buf += chunk.toString();
           const lines = buf.split("\n");
-          buf = lines.pop() ?? "";
+          buf = (_a = lines.pop()) != null ? _a : "";
           for (const line of lines) {
             if (!line.startsWith("data: ") || line === "data: [DONE]")
               continue;
             try {
-              const d = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content;
+              const d = (_e = (_d = (_c = (_b = JSON.parse(line.slice(6))) == null ? void 0 : _b.choices) == null ? void 0 : _c[0]) == null ? void 0 : _d.delta) == null ? void 0 : _e.content;
               if (d)
                 onChunk(d);
-            } catch {
+            } catch (e) {
             }
           }
         });
@@ -1135,6 +1157,7 @@ var AnthropicProvider = class {
   }
   async chat(messages, onChunk) {
     return new Promise((resolve, reject) => {
+      var _a;
       const https = require("https");
       const http = require("http");
       const url = new URL(`${this.baseUrl}/v1/messages`);
@@ -1143,7 +1166,7 @@ var AnthropicProvider = class {
         max_tokens: 2048,
         stream: true,
         messages: messages.filter((m) => m.role !== "system"),
-        system: messages.find((m) => m.role === "system")?.content
+        system: (_a = messages.find((m) => m.role === "system")) == null ? void 0 : _a.content
       });
       const options = {
         hostname: url.hostname,
@@ -1167,9 +1190,10 @@ var AnthropicProvider = class {
         }
         let buf = "";
         res.on("data", (chunk) => {
+          var _a2, _b, _c;
           buf += chunk.toString();
           const lines = buf.split("\n");
-          buf = lines.pop() ?? "";
+          buf = (_a2 = lines.pop()) != null ? _a2 : "";
           for (const line of lines) {
             if (!line.startsWith("data: "))
               continue;
@@ -1179,8 +1203,8 @@ var AnthropicProvider = class {
             try {
               const p = JSON.parse(data);
               if (p.type === "content_block_delta")
-                onChunk(p.delta?.text ?? "");
-            } catch {
+                onChunk((_c = (_b = p.delta) == null ? void 0 : _b.text) != null ? _c : "");
+            } catch (e) {
             }
           }
         });
@@ -1219,7 +1243,7 @@ var VaultSearchPlugin = class extends import_obsidian4.Plugin {
     this.addCommand({ id: "open-vault-search", name: "\u6253\u5F00 Vault Search", callback: () => this.activateView() });
     this.addSettingTab(new VaultSearchSettingTab(this.app, this));
     this.registerEvent(this.app.workspace.on("active-leaf-change", (leaf) => {
-      if (leaf?.view instanceof import_obsidian4.MarkdownView)
+      if ((leaf == null ? void 0 : leaf.view) instanceof import_obsidian4.MarkdownView)
         this.lastMarkdownView = leaf.view;
     }));
     await this.indexLoader.load();
