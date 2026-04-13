@@ -6,7 +6,7 @@ import { tFormat } from "./i18n";
 const SKIP_DIRS = new Set([".obsidian", "_templates", ".search_index", "node_modules", ".smart-env"]);
 const BATCH_SIZE = 8;
 const EMBED_BATCH_SIZE = 32; // maximum texts per embedding API call
-const MAX_EMBED_CHARS = 400; // conservative budget: BGE tokenizer splits some chars into 2+ tokens
+const MAX_EMBED_CHARS = 350; // conservative budget: BGE tokenizer can expand mixed CJK+ASCII content
 const MAX_CHUNK_CHARS = 500;
 const MIN_CHUNK_CHARS = 30;
 
@@ -242,13 +242,18 @@ export class Indexer {
           try {
             const subEmbeddings = await this.embedding.embed(subTexts);
             subEmbeddings.forEach((emb, j) => embeddingMap.set(k + j, emb));
-          } catch (e: any) {
-            // Log and skip only this sub-batch; other sub-batches are unaffected
-            const failedFiles = [...new Set(
-              allChunkData.slice(k, k + EMBED_BATCH_SIZE).map(d => d.file.basename)
-            )].join(", ");
-            console.error(`[vault-search] sub-batch [${k}..${k + subTexts.length - 1}] failed (${failedFiles}):`, e);
-            new Notice(tFormat("indexer.batchFailed", failedFiles, e.message));
+          } catch {
+            // Sub-batch failed (likely a token-limit outlier); fall back to one-by-one
+            for (let m = 0; m < subTexts.length; m++) {
+              try {
+                const [emb] = await this.embedding.embed([subTexts[m]]);
+                embeddingMap.set(k + m, emb);
+              } catch (e2: any) {
+                // Single text still fails — log and skip only this chunk
+                const name = allChunkData[k + m]?.file.basename ?? "?";
+                console.warn(`[vault-search] skip chunk (${name}): ${e2.message}`);
+              }
+            }
           }
         }
 
