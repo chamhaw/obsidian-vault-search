@@ -35,6 +35,7 @@ const strings: Record<string, {zh: string, en: string}> = {
     "stale.versionMismatch": {zh: "索引格式已过期，请重建索引", en: "Index format outdated, please rebuild"},
 
     "indexer.buildComplete": {zh: "✓ 索引构建完成，共 %d 篇笔记", en: "✓ Index built: %d notes"},
+    "indexer.batchFailed": {zh: "⚠ 批量 embed 失败（%s）：%s", en: "⚠ Embed batch failed (%s): %s"},
     "indexer.upToDate": {zh: "索引已是最新，无需更新", en: "Index is up to date"},
     "indexer.incrementalComplete": {zh: "✓ 增量更新完成，更新 %d 篇笔记", en: "✓ Incremental update: %d notes updated"},
     "indexer.building": {zh: "构建中...", en: "Building..."},

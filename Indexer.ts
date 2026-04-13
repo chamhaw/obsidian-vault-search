@@ -228,21 +228,27 @@ export class Indexer {
 
       if (allChunkData.length > 0) {
         const embedTexts = allChunkData.map(d => `${d.meta.title}\n${d.chunkText}`);
-        const embeddings = await this.embedding.embed(embedTexts);
+        try {
+          const embeddings = await this.embedding.embed(embedTexts);
 
-        allChunkData.forEach((d, idx) => {
-          results.push({
-            path: d.file.path,
-            title: d.meta.title,
-            summary: d.meta.summary,
-            tags: d.meta.tags,
-            mtime: d.file.stat.mtime,
-            chunkIdx: d.chunkIdx,
-            startLine: d.startLine,
-            text: d.chunkText,
-            embedding: embeddings[idx],
+          allChunkData.forEach((d, idx) => {
+            results.push({
+              path: d.file.path,
+              title: d.meta.title,
+              summary: d.meta.summary,
+              tags: d.meta.tags,
+              mtime: d.file.stat.mtime,
+              chunkIdx: d.chunkIdx,
+              startLine: d.startLine,
+              text: d.chunkText,
+              embedding: embeddings[idx],
+            });
           });
-        });
+        } catch (e: any) {
+          const paths = [...new Set(allChunkData.map(d => d.file.basename))].join(", ");
+          console.error(`[vault-search] embed batch failed (${paths}):`, e);
+          new Notice(tFormat("indexer.batchFailed", paths, e.message));
+        }
       }
 
       processed += batch.length;

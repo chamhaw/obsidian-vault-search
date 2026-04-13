@@ -89,9 +89,12 @@ export class VaultSearchSettingTab extends PluginSettingTab {
           await (this.plugin as any).runIndex("full", (cur: number, total: number) => {
             if (progressEl) progressEl.setText(tFormat("settings.progress", cur, total));
           });
+          if (progressEl) progressEl.setText(t("settings.buildIndexDone"));
+        } catch (e: any) {
+          if (progressEl) progressEl.setText(`Error: ${e.message}`);
+          new Notice(`Index build failed: ${e.message}`);
         } finally {
           btn.setDisabled(false).setButtonText(t("settings.buildIndexBtn"));
-          if (progressEl) progressEl.setText(t("settings.buildIndexDone"));
         }
       }));
 
@@ -108,9 +111,12 @@ export class VaultSearchSettingTab extends PluginSettingTab {
             await (this.plugin as any).runIndex("incremental", (cur: number, total: number) => {
               if (progressEl) progressEl.setText(tFormat("settings.progress", cur, total));
             });
+            if (progressEl) progressEl.setText(t("settings.buildIndexDone"));
+          } catch (e: any) {
+            if (progressEl) progressEl.setText(`Error: ${e.message}`);
+            new Notice(`Incremental update failed: ${e.message}`);
           } finally {
             btn.setDisabled(false).setButtonText(t("settings.incrIndexBtn"));
-            if (progressEl) progressEl.setText(t("settings.buildIndexDone"));
           }
         };
 
@@ -123,9 +129,12 @@ export class VaultSearchSettingTab extends PluginSettingTab {
             await (this.plugin as any).runIndex("full", (cur: number, total: number) => {
               if (progressEl) progressEl.setText(tFormat("settings.progress", cur, total));
             });
+            if (progressEl) progressEl.setText(t("settings.buildIndexDone"));
+          } catch (e: any) {
+            if (progressEl) progressEl.setText(`Error: ${e.message}`);
+            new Notice(`Full rebuild failed: ${e.message}`);
           } finally {
             btn.setDisabled(false).setButtonText(t("settings.incrIndexBtn"));
-            if (progressEl) progressEl.setText(t("settings.buildIndexDone"));
           }
         };
 
@@ -157,6 +166,8 @@ export class VaultSearchSettingTab extends PluginSettingTab {
           btn.setDisabled(true).setButtonText("索引中...");
           try {
             await this.plugin.runIndexSingleFile(file);
+          } catch (e: any) {
+            new Notice(`Single file index failed: ${e.message}`);
           } finally {
             btn.setDisabled(false).setButtonText(t("settings.testSingleBtn"));
           }
