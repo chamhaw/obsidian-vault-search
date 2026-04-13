@@ -6,6 +6,7 @@ import { tFormat } from "./i18n";
 const SKIP_DIRS = new Set([".obsidian", "_templates", ".search_index", "node_modules", ".smart-env"]);
 const BATCH_SIZE = 8;
 const EMBED_BATCH_SIZE = 32; // maximum texts per embedding API call
+const MAX_EMBED_CHARS = 480; // stay within 512-token API limit; Chinese ≈ 1 char/token
 const MAX_CHUNK_CHARS = 500;
 const MIN_CHUNK_CHARS = 30;
 
@@ -228,7 +229,10 @@ export class Indexer {
       }
 
       if (allChunkData.length > 0) {
-        const embedTexts = allChunkData.map(d => `${d.meta.title}\n${d.chunkText}`);
+        const embedTexts = allChunkData.map(d => {
+          const raw = `${d.meta.title}\n${d.chunkText}`;
+          return raw.length > MAX_EMBED_CHARS ? raw.slice(0, MAX_EMBED_CHARS) : raw;
+        });
         try {
           // split into sub-batches to respect API batch size limits
           const allEmbeddings: number[][] = [];

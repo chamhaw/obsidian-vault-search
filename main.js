@@ -63,10 +63,12 @@ var init_i18n = __esm({
       "related.loading": { zh: "\u52A0\u8F7D\u4E2D...", en: "Loading..." },
       "related.titlePrefix": { zh: "\u4E0E\u300C", en: 'Related to "' },
       "related.titleSuffix": { zh: "\u300D\u76F8\u5173\uFF1A", en: '":' },
+      "related.allLinked": { zh: "\u6240\u6709\u76F8\u5173\u7B14\u8BB0\u5DF2\u5EFA\u7ACB\u94FE\u63A5", en: "All related notes are already linked" },
       "related.errorPrefix": { zh: "\u9519\u8BEF: ", en: "Error: " },
       "stale.bannerPrefix": { zh: "\u26A0\uFE0F \u7D22\u5F15\u4E0E\u5F53\u524D\u914D\u7F6E\u4E0D\u517C\u5BB9\uFF0C\u641C\u7D22\u7ED3\u679C\u4E0D\u53EF\u4FE1\uFF0C\u8BF7\u91CD\u5EFA\u7D22\u5F15\u3002\n\u539F\u56E0\uFF1A", en: "\u26A0\uFE0F Index is incompatible with current config. Please rebuild.\nReason: " },
       "stale.versionMismatch": { zh: "\u7D22\u5F15\u683C\u5F0F\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u5EFA\u7D22\u5F15", en: "Index format outdated, please rebuild" },
       "indexer.buildComplete": { zh: "\u2713 \u7D22\u5F15\u6784\u5EFA\u5B8C\u6210\uFF0C\u5171 %d \u7BC7\u7B14\u8BB0", en: "\u2713 Index built: %d notes" },
+      "indexer.batchFailed": { zh: "\u26A0 \u6279\u91CF embed \u5931\u8D25\uFF08%s\uFF09\uFF1A%s", en: "\u26A0 Embed batch failed (%s): %s" },
       "indexer.upToDate": { zh: "\u7D22\u5F15\u5DF2\u662F\u6700\u65B0\uFF0C\u65E0\u9700\u66F4\u65B0", en: "Index is up to date" },
       "indexer.incrementalComplete": { zh: "\u2713 \u589E\u91CF\u66F4\u65B0\u5B8C\u6210\uFF0C\u66F4\u65B0 %d \u7BC7\u7B14\u8BB0", en: "\u2713 Incremental update: %d notes updated" },
       "indexer.building": { zh: "\u6784\u5EFA\u4E2D...", en: "Building..." },
@@ -217,13 +219,15 @@ function chunkNote(body, fmLines) {
   }
   return chunks;
 }
-var import_obsidian3, SKIP_DIRS, BATCH_SIZE, MAX_CHUNK_CHARS, MIN_CHUNK_CHARS, Indexer;
+var import_obsidian3, SKIP_DIRS, BATCH_SIZE, EMBED_BATCH_SIZE, MAX_EMBED_CHARS, MAX_CHUNK_CHARS, MIN_CHUNK_CHARS, Indexer;
 var init_Indexer = __esm({
   "Indexer.ts"() {
     import_obsidian3 = require("obsidian");
     init_i18n();
     SKIP_DIRS = /* @__PURE__ */ new Set([".obsidian", "_templates", ".search_index", "node_modules", ".smart-env"]);
     BATCH_SIZE = 8;
+    EMBED_BATCH_SIZE = 32;
+    MAX_EMBED_CHARS = 480;
     MAX_CHUNK_CHARS = 500;
     MIN_CHUNK_CHARS = 30;
     Indexer = class {
@@ -312,22 +316,36 @@ var init_Indexer = __esm({
             }
           }
           if (allChunkData.length > 0) {
-            const embedTexts = allChunkData.map((d) => `${d.meta.title}
-${d.chunkText}`);
-            const embeddings = await this.embedding.embed(embedTexts);
-            allChunkData.forEach((d, idx) => {
-              results.push({
-                path: d.file.path,
-                title: d.meta.title,
-                summary: d.meta.summary,
-                tags: d.meta.tags,
-                mtime: d.file.stat.mtime,
-                chunkIdx: d.chunkIdx,
-                startLine: d.startLine,
-                text: d.chunkText,
-                embedding: embeddings[idx]
-              });
+            const embedTexts = allChunkData.map((d) => {
+              const raw = `${d.meta.title}
+${d.chunkText}`;
+              return raw.length > MAX_EMBED_CHARS ? raw.slice(0, MAX_EMBED_CHARS) : raw;
             });
+            try {
+              const allEmbeddings = [];
+              for (let k = 0; k < embedTexts.length; k += EMBED_BATCH_SIZE) {
+                const subTexts = embedTexts.slice(k, k + EMBED_BATCH_SIZE);
+                const subEmbeddings = await this.embedding.embed(subTexts);
+                allEmbeddings.push(...subEmbeddings);
+              }
+              allChunkData.forEach((d, idx) => {
+                results.push({
+                  path: d.file.path,
+                  title: d.meta.title,
+                  summary: d.meta.summary,
+                  tags: d.meta.tags,
+                  mtime: d.file.stat.mtime,
+                  chunkIdx: d.chunkIdx,
+                  startLine: d.startLine,
+                  text: d.chunkText,
+                  embedding: allEmbeddings[idx]
+                });
+              });
+            } catch (e) {
+              const paths = [...new Set(allChunkData.map((d) => d.file.basename))].join(", ");
+              console.error(`[vault-search] embed batch failed (${paths}):`, e);
+              new import_obsidian3.Notice(tFormat("indexer.batchFailed", paths, e.message));
+            }
           }
           processed += batch.length;
           onProgress(Math.min(processed, files.length), files.length);
@@ -450,10 +468,14 @@ var VaultSearchSettingTab = class extends import_obsidian.PluginSettingTab {
           if (progressEl)
             progressEl.setText(tFormat("settings.progress", cur, total));
         });
-      } finally {
-        btn.setDisabled(false).setButtonText(t("settings.buildIndexBtn"));
         if (progressEl)
           progressEl.setText(t("settings.buildIndexDone"));
+      } catch (e) {
+        if (progressEl)
+          progressEl.setText(`Error: ${e.message}`);
+        new import_obsidian.Notice(`Index build failed: ${e.message}`);
+      } finally {
+        btn.setDisabled(false).setButtonText(t("settings.buildIndexBtn"));
       }
     }));
     new import_obsidian.Setting(containerEl).setName(t("settings.incrIndexName")).setDesc(t("settings.incrIndexDesc")).addButton((btn) => btn.setButtonText(t("settings.incrIndexBtn")).onClick(async () => {
@@ -467,10 +489,14 @@ var VaultSearchSettingTab = class extends import_obsidian.PluginSettingTab {
             if (progressEl)
               progressEl.setText(tFormat("settings.progress", cur, total));
           });
-        } finally {
-          btn.setDisabled(false).setButtonText(t("settings.incrIndexBtn"));
           if (progressEl)
             progressEl.setText(t("settings.buildIndexDone"));
+        } catch (e) {
+          if (progressEl)
+            progressEl.setText(`Error: ${e.message}`);
+          new import_obsidian.Notice(`Incremental update failed: ${e.message}`);
+        } finally {
+          btn.setDisabled(false).setButtonText(t("settings.incrIndexBtn"));
         }
       };
       const runFull = async () => {
@@ -483,10 +509,14 @@ var VaultSearchSettingTab = class extends import_obsidian.PluginSettingTab {
             if (progressEl)
               progressEl.setText(tFormat("settings.progress", cur, total));
           });
-        } finally {
-          btn.setDisabled(false).setButtonText(t("settings.incrIndexBtn"));
           if (progressEl)
             progressEl.setText(t("settings.buildIndexDone"));
+        } catch (e) {
+          if (progressEl)
+            progressEl.setText(`Error: ${e.message}`);
+          new import_obsidian.Notice(`Full rebuild failed: ${e.message}`);
+        } finally {
+          btn.setDisabled(false).setButtonText(t("settings.incrIndexBtn"));
         }
       };
       if (this.plugin.indexLoader.isStale()) {
@@ -512,6 +542,8 @@ var VaultSearchSettingTab = class extends import_obsidian.PluginSettingTab {
         btn.setDisabled(true).setButtonText("\u7D22\u5F15\u4E2D...");
         try {
           await this.plugin.runIndexSingleFile(file);
+        } catch (e) {
+          new import_obsidian.Notice(`Single file index failed: ${e.message}`);
         } finally {
           btn.setDisabled(false).setButtonText(t("settings.testSingleBtn"));
         }
@@ -836,13 +868,30 @@ var VaultSearchView = class extends import_obsidian2.ItemView {
       this.plugin.providers.embedding,
       this.plugin.providers.reranker,
       { recallTopK: 40, finalTopK: 5, minScore: this.plugin.settings.minScore }
-    ).then((results) => {
+    ).then(async (results) => {
+      let linkedTitles = /* @__PURE__ */ new Set();
+      try {
+        const content = await this.app.vault.read(active);
+        const re = /\[\[([^\]|#]+)/g;
+        let m;
+        while ((m = re.exec(content)) !== null) {
+          linkedTitles.add(m[1].trim().toLowerCase());
+        }
+      } catch {
+      }
+      const unlinked = results.filter(
+        (r) => !linkedTitles.has(r.title.trim().toLowerCase())
+      );
       el.empty();
       el.createEl("div", {
         text: t("related.titlePrefix") + curChunk.title + t("related.titleSuffix"),
         cls: "vs-rel-title"
       });
-      results.forEach((r) => {
+      if (unlinked.length === 0) {
+        el.createEl("div", { text: t("related.allLinked"), cls: "vs-empty" });
+        return;
+      }
+      unlinked.forEach((r) => {
         const item = el.createDiv({ cls: "vs-item" });
         const row = item.createDiv({ cls: "vs-title-row" });
         row.createEl("div", { text: r.title, cls: "vs-title" });
