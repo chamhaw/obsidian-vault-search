@@ -6,7 +6,7 @@ import { tFormat } from "./i18n";
 const SKIP_DIRS = new Set([".obsidian", "_templates", ".search_index", "node_modules", ".smart-env"]);
 const BATCH_SIZE = 8;
 const EMBED_BATCH_SIZE = 32; // maximum texts per embedding API call
-const MAX_EMBED_CHARS = 480; // stay within 512-token API limit; Chinese ≈ 1 char/token
+const MAX_EMBED_CHARS = 400; // conservative budget: BGE tokenizer splits some chars into 2+ tokens
 const MAX_CHUNK_CHARS = 500;
 const MIN_CHUNK_CHARS = 30;
 
@@ -233,33 +233,40 @@ export class Indexer {
           const raw = `${d.meta.title}\n${d.chunkText}`;
           return raw.length > MAX_EMBED_CHARS ? raw.slice(0, MAX_EMBED_CHARS) : raw;
         });
-        try {
-          // split into sub-batches to respect API batch size limits
-          const allEmbeddings: number[][] = [];
-          for (let k = 0; k < embedTexts.length; k += EMBED_BATCH_SIZE) {
-            const subTexts = embedTexts.slice(k, k + EMBED_BATCH_SIZE);
-            const subEmbeddings = await this.embedding.embed(subTexts);
-            allEmbeddings.push(...subEmbeddings);
-          }
 
-          allChunkData.forEach((d, idx) => {
-            results.push({
-              path: d.file.path,
-              title: d.meta.title,
-              summary: d.meta.summary,
-              tags: d.meta.tags,
-              mtime: d.file.stat.mtime,
-              chunkIdx: d.chunkIdx,
-              startLine: d.startLine,
-              text: d.chunkText,
-              embedding: allEmbeddings[idx],
-            });
-          });
-        } catch (e: any) {
-          const paths = [...new Set(allChunkData.map(d => d.file.basename))].join(", ");
-          console.error(`[vault-search] embed batch failed (${paths}):`, e);
-          new Notice(tFormat("indexer.batchFailed", paths, e.message));
+        // Per-sub-batch result map: index → embedding (undefined if that sub-batch failed)
+        const embeddingMap = new Map<number, number[]>();
+
+        for (let k = 0; k < embedTexts.length; k += EMBED_BATCH_SIZE) {
+          const subTexts = embedTexts.slice(k, k + EMBED_BATCH_SIZE);
+          try {
+            const subEmbeddings = await this.embedding.embed(subTexts);
+            subEmbeddings.forEach((emb, j) => embeddingMap.set(k + j, emb));
+          } catch (e: any) {
+            // Log and skip only this sub-batch; other sub-batches are unaffected
+            const failedFiles = [...new Set(
+              allChunkData.slice(k, k + EMBED_BATCH_SIZE).map(d => d.file.basename)
+            )].join(", ");
+            console.error(`[vault-search] sub-batch [${k}..${k + subTexts.length - 1}] failed (${failedFiles}):`, e);
+            new Notice(tFormat("indexer.batchFailed", failedFiles, e.message));
+          }
         }
+
+        allChunkData.forEach((d, idx) => {
+          const embedding = embeddingMap.get(idx);
+          if (!embedding) return; // sub-batch containing this chunk failed
+          results.push({
+            path: d.file.path,
+            title: d.meta.title,
+            summary: d.meta.summary,
+            tags: d.meta.tags,
+            mtime: d.file.stat.mtime,
+            chunkIdx: d.chunkIdx,
+            startLine: d.startLine,
+            text: d.chunkText,
+            embedding,
+          });
+        });
       }
 
       processed += batch.length;
