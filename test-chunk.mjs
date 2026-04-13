@@ -13,8 +13,11 @@ function parseFrontmatter(content) {
   if (end === -1)
     return { meta: { title: "", summary: "", tags: [] }, body: content, fmLines: 0 };
   const yaml = content.slice(4, end);
-  const body = content.slice(end + 4).trimStart();
-  const fmLines = content.slice(0, end + 4).split("\n").length;
+  const afterFm = content.slice(end + 4);
+  const body = afterFm.trimStart();
+  // 精确计算：prefix = content 中 body 之前的全部内容（含 fm + 空行）
+  const prefix = content.slice(0, content.length - body.length);
+  const fmLines = prefix.split("\n").length - 1;
   const raw = {};
   for (const line of yaml.split("\n")) {
     const m = line.match(/^(\w[\w-]*):\s*(.*)$/);
@@ -68,14 +71,39 @@ function chunkNote(body, fmLines) {
       }
     } else {
       const paragraphs = sectionText.split(/\n\n+/);
-      let paraOffset = section.startOffset;
-      const sectionLines = section.lines;
+
+      // 提取首行标题（如果有）
+      const firstParaTrimmed = paragraphs[0]?.trim() ?? "";
+      const hasHeading = /^#{2,3} /.test(firstParaTrimmed) && !firstParaTrimmed.includes("\n");
+      const headingPrefix = hasHeading ? firstParaTrimmed + "\n" : "";
+
       let lineIdx = 0;
+      let paraOffset = section.startOffset;
+      let firstSubChunk = true;
+      const sectionLines = section.lines;
+
       for (const para of paragraphs) {
         const trimmed = para.trim();
-        if (trimmed.length >= MIN_CHUNK_CHARS) {
-          chunks.push({ text: trimmed, startLine: fmLines + paraOffset });
+
+        // 跳过独立标题段（已提取为 headingPrefix）
+        if (hasHeading && trimmed === firstParaTrimmed) {
+          const paraLines = para.split("\n").length;
+          lineIdx += paraLines;
+          while (lineIdx < sectionLines.length && sectionLines[lineIdx]?.trim() === "") lineIdx++;
+          paraOffset = section.startOffset + lineIdx;
+          continue;
         }
+
+        if (trimmed.length >= MIN_CHUNK_CHARS) {
+          if (firstSubChunk && headingPrefix) {
+            // 第一个子 chunk：prepend 标题，startLine 指向标题所在行
+            chunks.push({ text: headingPrefix + trimmed, startLine: fmLines + section.startOffset });
+            firstSubChunk = false;
+          } else {
+            chunks.push({ text: trimmed, startLine: fmLines + paraOffset });
+          }
+        }
+
         const paraLines = para.split("\n").length;
         lineIdx += paraLines;
         while (lineIdx < sectionLines.length && sectionLines[lineIdx]?.trim() === "") lineIdx++;
