@@ -119,18 +119,19 @@ export class VaultSearchView extends ItemView {
         index.chunks,
         this.plugin.providers.embedding,
         this.plugin.providers.reranker,
-        { recallTopK: this.plugin.settings.rerankerRecallTopK, finalTopK: this.plugin.settings.rerankerFinalTopK }
+        { recallTopK: this.plugin.settings.rerankerRecallTopK, finalTopK: this.plugin.settings.rerankerFinalTopK, minScore: this.plugin.settings.minScore }
       );
       el.empty();
       if (!results.length) { el.setText(t("search.noResults")); return; }
       results.forEach(r => {
         const item = el.createDiv({ cls: "vs-item" });
         const row = item.createDiv({ cls: "vs-title-row" });
-        row.createEl("div", { text: r.chunk.title, cls: "vs-title" });
+        const titleEl = row.createDiv({ cls: "vs-title" });
+        highlightTerms(titleEl, r.chunk.title, query);
         row.createEl("div", { text: `${(r.score * 100).toFixed(1)}%`, cls: "vs-score" });
-        // Chunk text snippet (first 120 chars)
         const snippet = r.chunk.text.slice(0, 120).replace(/\n/g, " ");
-        item.createEl("div", { text: snippet, cls: "vs-summary" });
+        const summaryEl = item.createDiv({ cls: "vs-summary" });
+        highlightTerms(summaryEl, snippet, query);
         item.onclick = () => this.openNoteAtLine(r.chunk.path, r.chunk.startLine);
       });
     } catch (e: any) {
@@ -167,7 +168,7 @@ export class VaultSearchView extends ItemView {
         this.plugin.providers.embedding,
         this.plugin.providers.reranker,
         this.plugin.providers.llm,
-        { recallTopK: this.plugin.settings.rerankerRecallTopK, finalTopK: this.plugin.settings.rerankerFinalTopK },
+        { recallTopK: this.plugin.settings.rerankerRecallTopK, finalTopK: this.plugin.settings.rerankerFinalTopK, minScore: this.plugin.settings.minScore },
         chunk => { full += chunk; ansEl.setText(full); }
       );
       if (result.sources.length) {
@@ -206,7 +207,7 @@ export class VaultSearchView extends ItemView {
       index.chunks,
       this.plugin.providers.embedding,
       this.plugin.providers.reranker,
-      { recallTopK: 40, finalTopK: 5 }
+      { recallTopK: 40, finalTopK: 5, minScore: this.plugin.settings.minScore }
     ).then(results => {
       el.empty();
       el.createEl("div", {
@@ -262,4 +263,19 @@ export class VaultSearchView extends ItemView {
       new Notice(`已复制 [[${title}]] 到剪贴板`);
     }
   }
+}
+
+function highlightTerms(container: HTMLElement, text: string, query: string): void {
+  const terms = query.trim().split(/\s+/).filter(t => t.length > 1);
+  if (terms.length === 0) { container.textContent = text; return; }
+  const escaped = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const regex = new RegExp(`(${escaped.join("|")})`, "gi");
+  const parts = text.split(regex);
+  parts.forEach((part, i) => {
+    if (i % 2 === 1) {
+      container.createEl("mark", { cls: "vs-highlight", text: part });
+    } else if (part) {
+      container.appendText(part);
+    }
+  });
 }
