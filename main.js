@@ -592,6 +592,7 @@ var ConfirmModal = class extends import_obsidian.Modal {
 
 // SearchView.ts
 var import_obsidian2 = require("obsidian");
+var import_view = require("@codemirror/view");
 
 // SearchEngine.ts
 function cosineSimilarity(a, b) {
@@ -946,17 +947,16 @@ var VaultSearchView = class extends import_obsidian2.ItemView {
     const leaf = this.app.workspace.getLeaf();
     await leaf.openFile(file);
     const view = leaf.view;
-    if (view instanceof import_obsidian2.MarkdownView && startLine > 0) {
-      view.editor.scrollIntoView(
-        { from: { line: startLine, ch: 0 }, to: { line: startLine, ch: 0 } },
-        true
-      );
-      const lineLen = view.editor.getLine(startLine).length;
-      view.editor.setSelection(
-        { line: startLine, ch: 0 },
-        { line: startLine, ch: lineLen }
-      );
-    }
+    if (!(view instanceof import_obsidian2.MarkdownView))
+      return;
+    const cm = view.editor.cm;
+    const lineNum = Math.min(Math.max(startLine + 1, 1), cm.state.doc.lines);
+    const line = cm.state.doc.line(lineNum);
+    cm.dispatch({
+      selection: { anchor: line.from, head: line.to },
+      // Place the target line near the top of the viewport (80px from top)
+      effects: import_view.EditorView.scrollIntoView(line.from, { y: "start", yMargin: 80 })
+    });
   }
   insertWikilink(title) {
     const view = this.plugin.lastMarkdownView;

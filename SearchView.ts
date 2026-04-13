@@ -1,4 +1,5 @@
 import { ItemView, WorkspaceLeaf, TFile, MarkdownView, Notice } from "obsidian";
+import { EditorView } from "@codemirror/view";
 import type VaultSearchPlugin from "./main";
 import { semanticSearch, findRelatedNotes, askVault } from "./pipeline";
 import { t } from "./i18n";
@@ -264,18 +265,16 @@ export class VaultSearchView extends ItemView {
     const leaf = this.app.workspace.getLeaf();
     await leaf.openFile(file);
     const view = leaf.view;
-    if (view instanceof MarkdownView && startLine > 0) {
-      view.editor.scrollIntoView(
-        { from: { line: startLine, ch: 0 }, to: { line: startLine, ch: 0 } },
-        true
-      );
-      // Select the entire line so the user can spot it immediately
-      const lineLen = view.editor.getLine(startLine).length;
-      view.editor.setSelection(
-        { line: startLine, ch: 0 },
-        { line: startLine, ch: lineLen }
-      );
-    }
+    if (!(view instanceof MarkdownView)) return;
+    const cm = (view.editor as any).cm as EditorView;
+    // CM6 lines are 1-based; clamp to valid document range
+    const lineNum = Math.min(Math.max(startLine + 1, 1), cm.state.doc.lines);
+    const line = cm.state.doc.line(lineNum);
+    cm.dispatch({
+      selection: { anchor: line.from, head: line.to },
+      // Place the target line near the top of the viewport (80px from top)
+      effects: EditorView.scrollIntoView(line.from, { y: "start", yMargin: 80 }),
+    });
   }
 
   private insertWikilink(title: string) {
