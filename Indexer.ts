@@ -5,6 +5,7 @@ import { tFormat } from "./i18n";
 
 const SKIP_DIRS = new Set([".obsidian", "_templates", ".search_index", "node_modules", ".smart-env"]);
 const BATCH_SIZE = 8;
+const EMBED_BATCH_SIZE = 32; // maximum texts per embedding API call
 const MAX_CHUNK_CHARS = 500;
 const MIN_CHUNK_CHARS = 30;
 
@@ -229,7 +230,13 @@ export class Indexer {
       if (allChunkData.length > 0) {
         const embedTexts = allChunkData.map(d => `${d.meta.title}\n${d.chunkText}`);
         try {
-          const embeddings = await this.embedding.embed(embedTexts);
+          // split into sub-batches to respect API batch size limits
+          const allEmbeddings: number[][] = [];
+          for (let k = 0; k < embedTexts.length; k += EMBED_BATCH_SIZE) {
+            const subTexts = embedTexts.slice(k, k + EMBED_BATCH_SIZE);
+            const subEmbeddings = await this.embedding.embed(subTexts);
+            allEmbeddings.push(...subEmbeddings);
+          }
 
           allChunkData.forEach((d, idx) => {
             results.push({
@@ -241,7 +248,7 @@ export class Indexer {
               chunkIdx: d.chunkIdx,
               startLine: d.startLine,
               text: d.chunkText,
-              embedding: embeddings[idx],
+              embedding: allEmbeddings[idx],
             });
           });
         } catch (e: any) {
